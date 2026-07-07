@@ -1,0 +1,23 @@
+{
+    "app-id": "com.aurora.Music",
+    "runtime": "org.kde.Platform",
+    "runtime-version": "6.6",
+    "sdk": "org.kde.Sdk",
+    "command": "aurora-music",
+    "modules": [
+        {
+            "name": "aurora-music",
+            "buildsystem": "simple",
+            "build-commands": [
+                "install -Dm755 aurora_player.py /app/bin/aurora_player.py",
+                "install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.aurora.Music.png",
+                "install -Dm644 com.aurora.Music.desktop /app/share/applications/com.aurora.Music.desktop",
+                "pip install --no-index --find-links=. PySide6 mutagen numpy yt-dlp"
+            ],
+            "sources": [
+                {"type": "file", "path": "../aurora-player/aurora_player.py"},
+                {"type": "file", "path": "../aurora-player/icon-512.png"}
+            ]
+        }
+    ]
+}

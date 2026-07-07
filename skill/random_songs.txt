@@ -1,0 +1,91 @@
+# =====================================================================
+# Random Song Pool
+# =====================================================================
+# Used by play_in_flb.py --random
+# One song per line. Lines starting with # are comments.
+# Format: "Song Name" or "Song Name Artist"
+# Feel free to add/remove songs from this list.
+# =====================================================================
+
+# Bollywood / Hindi
+Excuses AP Dhillon
+Channa Mereya Arijit Singh
+Tum Hi Ho Arijit Singh
+Raabta Arijit Singh
+Gerua Arijit Singh
+Kalank Arijit Singh
+Ae Watan Raazi
+Phir Bhi Tumko Chaahungi Half Girlfriend
+Bekhayali Kabir Singh
+Tujhe Kitna Chahne Lage Arijit Singh
+Pachtaoge Jaani
+Khairiyat Kabir Singh
+Shayad Love Aaj Kal
+Khuda Jaane Bachna Ae Haseeno
+Masakali Delhi 6
+Tum Se Hi Jab We Met
+Iktara Wake Up Sid
+Suno Aisha
+Shaam Shandaar
+Ghungroo War
+
+# Punjabi
+Brown Munde AP Dhillon
+Insane AP Dhillon
+Excuses AP Dhillon
+Brown Boi AP Dhillon
+Goat Diljit Dosanjh
+Peaches Diljit Dosanjh
+Lover Diljit Dosanjh
+5 Taara Diljit Dosanjh
+Patola Guru Randhawa
+Lahore Guru Randhawa
+Ban Ja Rani Guru Randhawa
+High Rated Gabru Guru Randhawa
+Suit Suit Guru Randhawa
+Pasoori Ali Sethi Shae Gill
+
+# International / English
+Shape of You Ed Sheeran
+Perfect Ed Sheeran
+Photograph Ed Sheeran
+Thinking Out Loud Ed Sheeran
+Bad Guy Billie Eilish
+Lovely Billie Eilish Khalid
+Someone Like You Adele
+Hello Adele
+Rolling in the Deep Adele
+Stay Justin Bieber Kid LAROI
+Despacito Luis Fonsi
+Senorita Shawn Mendes Camila Cabello
+Closer Chainsmokers
+Faded Alan Walker
+Believer Imagine Dragons
+Thunder Imagine Dragons
+Demons Imagine Dragons
+Counting Stars OneRepublic
+Maps Maroon 5
+Sugar Maroon 5
+
+# Old Bollywood classics
+Kabhi Kabhie Kabhi Kabhie
+Pal Pal Dil Ke Paas
+Mera Joota Hai Japani
+Chura Liya Hai Tunne Sardo
+Roop Tera Mastana
+Lag Ja Gale Woh Kaun Thi
+Tujh Mein Rab Dikhta Hai
+Tere Bina Zindagi Se
+Aap Ki Nazron Ne Samjha
+In Aankhon Ki Masti
+Jai Jai Shiv Shankar
+Mungda Mungda
+I Am A Disco Dancer
+Yaad Aa Raha Hai Tera Pyar
+
+# Regional
+Naatu Naatu RRR
+Dholida Gangubai Kathiawadi
+Meri Jaan Meri Jaan Sanak
+Kesariya Brahmastra
+Jhuma Jhumelu Gippy Grewal
