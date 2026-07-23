@@ -40,30 +40,8 @@ EOF
 mkdir -p "$HOME/Downloads"
 echo "[Aurora] Done. Run: aurora-player --version"
 echo "[Aurora] If 'command not found', run: export PATH=\"$HOME/.local/bin:$PATH\""
-import os, sys
-
-def patch():
-    try:
-        import mpris_server.mpris.metadata as m
-        file_path = m.__file__
-    except ImportError:
-        return
-
-    with open(file_path, 'r') as f:
-        content = f.read()
-
-    old_line = "  album, art_url, artists, disc_number, length, name, track_id, track_number, _, uri = track\n"
-    new_line = "  album, art_url, artists, comments, disc_number, length, name, track_id, track_number, type_, uri = track\n"
-
-    if old_line in content:
-        content = content.replace(old_line, new_line)
-        with open(file_path, 'w') as f:
-            f.write(content)
-
-patch()
-
 # Patch mpris_server metadata unpacking bug
-cat << 'PATCHEOF' > /tmp/patch_mpris.py
+cat << 'PYEOF' > /tmp/patch_mpris.py
 import os, sys
 def patch():
     try:
@@ -81,6 +59,6 @@ def patch():
             f.write(content)
 if __name__ == "__main__":
     patch()
-PATCHEOF
+PYEOF
 python3 /tmp/patch_mpris.py
 rm /tmp/patch_mpris.py
