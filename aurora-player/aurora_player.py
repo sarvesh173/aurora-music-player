@@ -108,9 +108,25 @@ except ImportError:
 
 # ===== Constants =====
 APP_NAME = "Aurora Music Player"
-APP_VERSION = "17.5.0"
+APP_VERSION = "21.0.0"  # v21: Massive UI update + bug fixes (better icons, monstercat smoothing, About, theme polish)
 APP_DBUS = "aurora"
-MUSIC_FOLDER = Path.home() / "Downloads"
+
+# v19.2: MUSIC_FOLDER is now a *function* that reads the user-configured path
+# from cfg (default: ~/Downloads). All call sites use MUSIC_FOLDER() instead
+# of the old constant. The Settings screen exposes a folder picker that
+# writes cfg["music_folder"].
+def MUSIC_FOLDER():
+    """Return the configured music library / download folder.
+    Falls back to ~/Downloads if not set or invalid."""
+    try:
+        p = load_cfg().get("music_folder")
+        if p:
+            f = Path(p).expanduser()
+            if f.is_dir() or f.parent.is_dir():
+                return f
+    except Exception:
+        pass
+    return Path.home() / "Downloads"
 
 # ===== v16: Browse (online search + suggestions + preview + 1-click download) ====
 # iTunes Search API: free, no API key, ~20 req/min, returns 30-sec previewUrl +
@@ -371,7 +387,98 @@ def apply_theme_hue(hue):
 
 _finish_m3()
 
-# ===== SVG Icons (Material Symbols paths — single-path, clean) =====
+# ===== v18: THEME SYSTEM — 4 themes reverse-engineered from 3 music players =====
+# Theme 0: "Aurora Indigo" — default (existing M3 dark from seed #6366F1)
+# Theme 1: "Aurora Neon" — from Beatbox (dark synthwave, pink/purple neon)
+# Theme 2: "Aurora Material" — from Nora (clean blue-grey, light/dark)
+# Theme 3: "Aurora Brutalist" — from Nuclear (neobrutalist coral, hard borders)
+
+THEME_NAMES = ["Aurora Indigo", "Aurora Neon", "Aurora Material", "Aurora Brutalist"]
+THEME_DEFAULT = 0
+
+# v18: Aurora Neon theme — reverse-engineered from Beatbox
+# Source: /tmp/explore-beatbox/beatbox-main/webview-ui/src/styles.css
+# Dark-only synthwave: hot pink #ec4899 + purple #8b5cf6 on near-black bg
+THEME_NEON = {
+    "primary": "#ec4899", "on_primary": "#ffffff",
+    "primary_container": "#8b5cf6", "on_primary_container": "#ffffff",
+    "secondary": "#8b5cf6", "on_secondary": "#ffffff",
+    "secondary_container": "#1a1028", "on_secondary_container": "#e0d0ff",
+    "tertiary": "#ff84c6", "on_tertiary": "#ffffff",
+    "tertiary_container": "#2a1838", "on_tertiary_container": "#ffd8ec",
+    "error": "#fecdd3", "on_error": "#690005",
+    "error_container": "#93000A", "on_error_container": "#FFDAD6",
+    "surface": "#04020a", "surface_dim": "#04020a", "surface_bright": "#1a1028",
+    "surface_container_lowest": "#02010a", "surface_container_low": "#0a0612",
+    "surface_container": "#0e0a18", "surface_container_high": "#130b1e",
+    "surface_container_highest": "#1a1028",
+    "on_surface": "#fff7fb", "on_surface_variant": "rgba(255,233,247,0.68)",
+    "outline": "rgba(255,255,255,0.20)", "outline_variant": "rgba(255,255,255,0.08)",
+    "inverse_surface": "#fff7fb", "inverse_on_surface": "#04020a",
+    "inverse_primary": "#ec4899",
+    # Extra tokens for gradient accent
+    "accent_gradient_1": "#ec4899", "accent_gradient_2": "#8b5cf6",
+}
+
+# v18: Aurora Material theme — reverse-engineered from Nora
+# Source: /tmp/explore-nora/Nora-3.1.0-stable/src/renderer/src/assets/styles/styles.css
+# Clean blue-grey dark mode with steel-blue accents
+THEME_MATERIAL = {
+    "primary": "#BCD8F1", "on_primary": "#1a2030",
+    "primary_container": "#4A7891", "on_primary_container": "#ffffff",
+    "secondary": "#9D9BFF", "on_secondary": "#1a1a30",
+    "secondary_container": "#2F323A", "on_secondary_container": "#BCD8F1",
+    "tertiary": "#7A7BE5", "on_tertiary": "#ffffff",
+    "tertiary_container": "#2a2a48", "on_tertiary_container": "#dddaff",
+    "error": "#DB1549", "on_error": "#ffffff",
+    "error_container": "#5c0a20", "on_error_container": "#FFDAD6",
+    "surface": "#212328", "surface_dim": "#1a1c20", "surface_bright": "#2F323A",
+    "surface_container_lowest": "#18191e", "surface_container_low": "#1e2025",
+    "surface_container": "#25272c", "surface_container_high": "#2F323A",
+    "surface_container_highest": "#3a3d44",
+    "on_surface": "#ffffff", "on_surface_variant": "#808080",
+    "outline": "#555560", "outline_variant": "#404048",
+    "inverse_surface": "#ffffff", "inverse_on_surface": "#212328",
+    "inverse_primary": "#4A7891",
+}
+
+# v18: Aurora Brutalist theme — reverse-engineered from Nuclear
+# Source: /tmp/explore-nuclear/nuclear-player-1.42.0/packages/tailwind-config/global.css
+# Neobrutalist: coral primary, warm brown bg, pure black borders
+THEME_BRUTALIST = {
+    "primary": "#E89E97", "on_primary": "#000000",
+    "primary_container": "#87534F", "on_primary_container": "#E3DEDC",
+    "secondary": "#B5E5C0", "on_secondary": "#000000",
+    "secondary_container": "#423B38", "on_secondary_container": "#E3DEDC",
+    "tertiary": "#C9B1DD", "on_tertiary": "#000000",
+    "tertiary_container": "#5a4878", "on_tertiary_container": "#C9B1DD",
+    "error": "#DA4530", "on_error": "#ffffff",
+    "error_container": "#3a1810", "on_error_container": "#FFDAD6",
+    "surface": "#35302E", "surface_dim": "#2a2523", "surface_bright": "#423B38",
+    "surface_container_lowest": "#25211F", "surface_container_low": "#2e2926",
+    "surface_container": "#35302E", "surface_container_high": "#423B38",
+    "surface_container_highest": "#4d4642",
+    "on_surface": "#E3DEDC", "on_surface_variant": "#C9B0AD",
+    "outline": "#7A6663", "outline_variant": "#5a4a48",
+    "inverse_surface": "#E3DEDC", "inverse_on_surface": "#35302E",
+    "inverse_primary": "#87534F",
+    # Extra: brutalist uses solid black borders
+    "border_color": "#7A6663", "border_width": "2px",
+}
+
+THEMES = {
+    0: DEFAULT_M3,           # Aurora Indigo (existing)
+    1: THEME_NEON,           # Aurora Neon (Beatbox)
+    2: THEME_MATERIAL,       # Aurora Material (Nora)
+    3: THEME_BRUTALIST,      # Aurora Brutalist (Nuclear)
+}
+
+def apply_theme(theme_id):
+    """v18: Apply a theme by ID (0-3). Updates the global M3 dict + rebuilds QSS."""
+    pal = THEMES.get(theme_id, DEFAULT_M3)
+    M3.clear()
+    M3.update(dict(pal))  # copy so we don't mutate the original
+    _finish_m3()
 def _svg(path_data, fill=None, size=24):
     fill = fill or M3["on_surface_variant"]
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="{fill}" width="{size}" height="{size}"><path d="{path_data}"/></svg>'
@@ -396,7 +503,7 @@ IC_TRASH = "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H
 IC_HEART = "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
 IC_SETTINGS = "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"
 IC_REFRESH = "M17.65 6.35A7.95 7.95 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
-IC_AUDIO_DEVICE = "M12 2a10 10 0 0 1 10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2zm0 2.5a7.5 7.5 0 0 0 0 15 7.5 7.5 0 0 0 0-15zm6.5 1.5h-5a1 1 0 0 1 0-2h5a1 1 0 0 1 0 2zm-8-2h5a1 1 0 0 1 0 2h-5a1 1 0 0 1 0-2zm8 8H5a1 1 0 0 1 0-2h10a1 1 0 0 1 0 2z"
+IC_AUDIO_DEVICE = "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"
 # v15 icons (Material Symbols)
 IC_MUTE = "M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"
 IC_PLAYLIST_ADD = "M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"
@@ -467,11 +574,13 @@ class ClickSlider(QSlider):
         super().mousePressEvent(e)
 
 # ===== v17.3: AnimatedButton — press-scale animation on ALL control buttons =====
-# Inspired by Material Design 3 ripple + scale interaction.
-# When pressed, the button shrinks to 90% then bounces back to 100% in ~150ms.
+# v21 BUGFIX: scale animation was causing visual glitches + layout drift.
+# Per user request, the scale animation is now DISABLED by default.
+# The class still exists for backwards compat (used by browse_btn etc.)
+# but mousePressEvent / enterEvent / leaveEvent no longer animate.
 class AnimatedButton(QPushButton):
-    """v17.3: QPushButton with press-scale animation. Uses QPropertyAnimation
-    on a custom _scale property to create a bouncy press effect."""
+    """v21: AnimatedButton — scale animation DISABLED per user request.
+    Acts as a plain QPushButton now. Kept for backwards compatibility."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._scale = 1.0
@@ -481,31 +590,12 @@ class AnimatedButton(QPushButton):
         self._scale = v
         self.update()
     scale = Property(float, _get_scale, _set_scale)
+    # v21: No-op the animation methods — no more scaling
     def mousePressEvent(self, e):
-        # Animate: shrink to 0.88 then bounce back to 1.0
-        if self._anim: self._anim.stop()
-        self._anim = QSequentialAnimationGroup(self)
-        shrink = QPropertyAnimation(self, b"scale", self)
-        shrink.setDuration(80); shrink.setStartValue(1.0); shrink.setEndValue(0.88)
-        bounce = QPropertyAnimation(self, b"scale", self)
-        bounce.setDuration(120); bounce.setStartValue(0.88); bounce.setEndValue(1.0)
-        bounce.setEasingCurve(QEasingCurve.OutBack)
-        self._anim.addAnimation(shrink); self._anim.addAnimation(bounce)
-        self._anim.start()
         super().mousePressEvent(e)
     def enterEvent(self, e):
-        # Subtle grow on hover (1.0 → 1.05)
-        if self._anim: self._anim.stop()
-        self._anim = QPropertyAnimation(self, b"scale", self)
-        self._anim.setDuration(100); self._anim.setStartValue(self._scale)
-        self._anim.setEndValue(1.05); self._anim.start()
         super().enterEvent(e)
     def leaveEvent(self, e):
-        # Shrink back to 1.0
-        if self._anim: self._anim.stop()
-        self._anim = QPropertyAnimation(self, b"scale", self)
-        self._anim.setDuration(100); self._anim.setStartValue(self._scale)
-        self._anim.setEndValue(1.0); self._anim.start()
         super().leaveEvent(e)
 
 # ===== v15: LevelScanner — async per-track peak levels for the visualizer ====
@@ -601,7 +691,7 @@ class Visualizer(QWidget):
         self.bar_w = viz_cfg.get("bar_width", 4)
         self.gap = viz_cfg.get("bar_gap", 2)
         self.rounded = viz_cfg.get("rounded", True)
-        self.timer = QTimer(self); self.timer.setInterval(33); self.timer.timeout.connect(self._tick)
+        self.timer = QTimer(self); self.timer.setInterval(100); self.timer.timeout.connect(self._tick)  # v17.6: 10 FPS (was 30 — too fast)
     def set_levels(self, levels, real):
         self.levels = levels or []; self.real = real
         self._resample(); self.update()
@@ -758,54 +848,56 @@ class Visualizer(QWidget):
     def _paint_bars(self, p, w, h, mid, n, playing, math, mirror=False):
         p.setPen(Qt.NoPen)
         bw = self.bar_w; gap = self.gap
+        # v19: FULL WIDTH — bars span edge to edge, no centering, no padding
         total_w = n * (bw + gap) - gap
-        start_x = max(self.PAD, (w - total_w) / 2)
+        if total_w < w:
+            # Scale bar width + gap to fill full width
+            scale = w / total_w
+            bw = max(1, int(bw * scale))
+            gap = max(0, int(gap * scale))
+        start_x = 0  # v19: start from left edge, no PAD
         for i, lv in enumerate(self.bars):
             x = start_x + i * (bw + gap)
             amp = lv
             if playing:
-                amp = min(1.0, amp * (1.0 + 0.3 * self._pulse))  # v17.4: REAL pulse, no fake sine
-            bh = max(2.0, amp * (h - 6))
+                amp = min(1.0, amp * (1.0 + 0.3 * self._pulse))
+            bh = max(2.0, amp * (h - 4))
             if mirror:
-                # Draw from center outward (both up and down)
                 col = QColor(M3["primary"]); col.setAlpha(220)
                 p.setBrush(col)
                 radius = min(bw/2, 2.0) if self.rounded else 0
                 p.drawRoundedRect(QRectF(x, mid - bh/2, bw, bh), radius, radius)
             else:
-                # Draw from bottom up
                 col = QColor(M3["primary"]); col.setAlpha(220)
                 p.setBrush(col)
                 radius = min(bw/2, 2.0) if self.rounded else 0
-                p.drawRoundedRect(QRectF(x, h - bh - 2, bw, bh), radius, radius)
+                p.drawRoundedRect(QRectF(x, h - bh - 1, bw, bh), radius, radius)
 
     # ===== v17.3: Mode 3 — Wave (inspired by Kurve waveRect + CAVA waveform) =====
     def _paint_wave(self, p, w, h, mid, n, playing, math):
         if n < 2: return
-        step = (w - 2*self.PAD) / (n - 1)
+        # v19: FULL WIDTH — no PAD, span edge to edge
+        step = w / (n - 1)
         path = QPainterPath()
-        path.moveTo(self.PAD, mid - self.bars[0] * (h/2 - 4))
+        path.moveTo(0, mid - self.bars[0] * (h/2 - 4))
         for i in range(1, n):
-            x = self.PAD + i * step
+            x = i * step
             y = mid - self.bars[i] * (h/2 - 4)
             if playing:
-                y -= 4 * self._pulse  # v17.4: REAL pulse, no fake sine
-            # Smooth curve via quadratic to midpoint
-            prev_x = self.PAD + (i-1) * step
+                y -= 4 * self._pulse
+            prev_x = (i-1) * step
             prev_y = mid - self.bars[i-1] * (h/2 - 4)
             mid_x = (prev_x + x) / 2
             mid_y = (prev_y + y) / 2
             path.quadTo(prev_x, prev_y, mid_x, mid_y)
-        path.lineTo(w - self.PAD, mid - self.bars[-1] * (h/2 - 4))
-        # Stroke the wave
+        path.lineTo(w, mid - self.bars[-1] * (h/2 - 4))
         pen = QPen(QColor(M3["primary"])); pen.setWidthF(self.bar_w)
         pen.setCapStyle(Qt.RoundCap if self.rounded else Qt.SquareCap)
         p.setPen(pen); p.setBrush(Qt.NoBrush)
         p.drawPath(path)
-        # Fill below the wave (gradient)
         fill_path = QPainterPath(path)
-        fill_path.lineTo(w - self.PAD, h)
-        fill_path.lineTo(self.PAD, h)
+        fill_path.lineTo(w, h)
+        fill_path.lineTo(0, h)
         fill_path.closeSubpath()
         grad = QLinearGradient(0, 0, 0, h)
         c = QColor(M3["primary"]); c.setAlpha(80)
@@ -846,8 +938,13 @@ class Visualizer(QWidget):
         bw = self.bar_w; gap = self.gap
         block_h = 4; block_gap = 1
         total_rows = int((h - 4) / (block_h + block_gap))
+        # v19: FULL WIDTH — scale to fill edge to edge
         total_w = n * (bw + gap) - gap
-        start_x = max(self.PAD, (w - total_w) / 2)
+        if total_w < w:
+            scale = w / total_w
+            bw = max(1, int(bw * scale))
+            gap = max(0, int(gap * scale))
+        start_x = 0  # v19: no padding, full width
         for i, lv in enumerate(self.bars):
             amp = lv
             if playing:
@@ -1042,7 +1139,7 @@ class AnimatedNowPlaying(QWidget):
         self.win = None
         self.setFixedSize(48, 32)
         self.phase = 0.0
-        self.timer = QTimer(self); self.timer.setInterval(50)  # ~20fps
+        self.timer = QTimer(self); self.timer.setInterval(100)  # v17.6: 10 FPS (was 20)
         self.timer.timeout.connect(self._tick)
     def set_playing(self, playing):
         if playing: self.timer.start()
@@ -1382,8 +1479,232 @@ QLineEdit#searchBar { background-color:rgba(41,42,47,0.85); border:1px solid rgb
 """
 
 def build_ss():
-    """v15: rebuild the app stylesheet from the LIVE M3 palette."""
-    return _m3ss(SS_TEMPLATE)
+    """v18.5: rebuild the app stylesheet from the LIVE M3 palette + theme-specific
+    structural overrides. Each theme doesn't just change colors — it changes
+    button shapes, border styles, corner radii, and shadow effects to match
+    the source player's actual UI."""
+    base = _m3ss(SS_TEMPLATE)
+    # v18.5: Get the current theme ID to apply structural overrides
+    theme_id = 0
+    try:
+        theme_id = load_cfg().get("theme_id", 0)
+    except Exception:
+        pass
+    # Append theme-specific structural QSS (shapes, borders, shadows)
+    if theme_id == 1:
+        base += _m3ss(THEME_NEON_QSS)
+    elif theme_id == 2:
+        base += _m3ss(THEME_MATERIAL_QSS)
+    elif theme_id == 3:
+        base += _m3ss(THEME_BRUTALIST_QSS)
+    return base
+
+# ===== v18.5: Theme-specific STRUCTURAL QSS =====
+# These don't just change colors — they change button shapes, border widths,
+# corner radii, and shadow effects to match each source player's actual UI.
+
+# Aurora Neon (Beatbox): glassmorphic, circular buttons, glow shadows, gradients
+THEME_NEON_QSS = """
+/* v18.5 BEATBOX STYLE — glassmorphic neon, circular buttons with glow */
+QPushButton#controlButton {
+    border-radius: 20px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+}
+QPushButton#controlButton:hover {
+    background: rgba(236,72,153,0.15); border-color: rgba(236,72,153,0.44);
+}
+QPushButton#playButton {
+    border-radius: 28px;
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #ec4899, stop:1 #8b5cf6);
+    border: 1px solid rgba(255,255,255,0.12);
+}
+QPushButton#navButton {
+    border-radius: 20px; border: 1px solid transparent;
+    margin: 2px 12px; padding: 14px 24px;
+}
+QPushButton#navButton:checked {
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(236,72,153,0.26), stop:1 rgba(139,92,246,0.2));
+    border: 1px solid rgba(236,72,153,0.44); border-radius: 20px;
+}
+QPushButton#createBtn {
+    border-radius: 24px; border: 1px solid rgba(236,72,153,0.3);
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #ec4899, stop:1 #8b5cf6);
+}
+QPushButton#browseDownloadBtnWide {
+    border-radius: 18px; border: 1px solid rgba(236,72,153,0.3);
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #ec4899, stop:1 #8b5cf6);
+}
+QFrame#browseCard {
+    border-radius: 18px; border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(14,10,24,0.65);
+}
+QFrame#browseCard:hover {
+    border: 1px solid rgba(236,72,153,0.5);
+    background: rgba(19,11,30,0.85);
+}
+QFrame#settingsCard {
+    border-radius: 18px; border: 1px solid rgba(255,255,255,0.05);
+    background: rgba(10,7,16,0.55);
+}
+QLineEdit#searchBar {
+    border-radius: 24px; border: 1px solid rgba(236,72,153,0.2);
+    background: rgba(10,6,18,0.85);
+}
+QLineEdit#searchBar:focus { border: 1px solid #ec4899; }
+QFrame#sidebar {
+    background-color: rgba(8,5,15,0.6);
+    border-right: 1px solid rgba(236,72,153,0.15);
+}
+QFrame#playerBar {
+    background-color: rgba(8,5,15,0.72);
+    border-top: 1px solid rgba(236,72,153,0.12);
+}
+QPushButton#externalBrowseBtn {
+    border-radius: 14px; border: 1px solid rgba(139,92,246,0.3);
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(236,72,153,0.5), stop:1 rgba(139,92,246,0.5));
+}
+QPushButton#suggestPill {
+    border-radius: 14px; border: 1px solid rgba(236,72,153,0.2);
+}
+QPushButton#suggestPill:hover {
+    border-color: #ec4899; background: rgba(236,72,153,0.1);
+}
+"""
+
+# Aurora Material (Nora): chunky 3px outlined borders, 24px rounded pills, soft shadows
+THEME_MATERIAL_QSS = """
+/* v18.5 NORA STYLE — Material flat, chunky 3px borders, rounded-3xl pills */
+QPushButton#controlButton {
+    border-radius: 24px; border: 2px solid @outline_variant;
+    background: transparent;
+}
+QPushButton#controlButton:hover {
+    background: @surface_container_high; border-color: @primary;
+}
+QPushButton#controlButton:checked {
+    background: @primary_container; border: 2px solid @primary;
+}
+QPushButton#playButton {
+    border-radius: 28px; border: 2px solid @primary;
+    background: @primary;
+}
+QPushButton#navButton {
+    border-radius: 24px; border: 2px solid transparent;
+    margin: 2px 8px; padding: 14px 24px;
+}
+QPushButton#navButton:checked {
+    border: 2px solid @primary; border-radius: 24px;
+    background: @surface_container_high;
+}
+QPushButton#createBtn {
+    border-radius: 24px; border: 3px solid @primary_container;
+    background: @primary_container;
+}
+QPushButton#createBtn:hover {
+    border: 3px solid @primary;
+}
+QPushButton#browseDownloadBtnWide {
+    border-radius: 24px; border: 2px solid @primary;
+    background: @primary;
+}
+QFrame#browseCard {
+    border-radius: 16px; border: 2px solid @outline_variant;
+}
+QFrame#browseCard:hover {
+    border: 2px solid @primary;
+}
+QFrame#settingsCard {
+    border-radius: 16px; border: 2px solid @outline_variant;
+}
+QLineEdit#searchBar {
+    border-radius: 24px; border: 2px solid @outline_variant;
+}
+QLineEdit#searchBar:focus { border: 2px solid @primary; }
+QPushButton#externalBrowseBtn {
+    border-radius: 24px; border: 2px solid @primary_container;
+    background: @primary_container;
+}
+QPushButton#suggestPill {
+    border-radius: 18px; border: 2px solid @outline_variant;
+}
+QPushButton#suggestPill:hover {
+    border: 2px solid @primary;
+}
+"""
+
+# Aurora Brutalist (Nuclear): 2px solid black borders, sharp 8px corners, no blur shadows
+THEME_BRUTALIST_QSS = """
+/* v18.5 NUCLEAR STYLE — neobrutalist, 2px solid borders, sharp corners */
+QPushButton#controlButton {
+    border-radius: 6px; border: 2px solid @outline;
+    background: @surface_container;
+}
+QPushButton#controlButton:hover {
+    background: @surface_container_high; border: 2px solid @on_surface;
+}
+QPushButton#controlButton:checked {
+    background: @primary; border: 2px solid @on_surface;
+    color: @on_primary;
+}
+QPushButton#playButton {
+    border-radius: 8px; border: 2px solid @on_surface;
+    background: @primary;
+}
+QPushButton#navButton {
+    border-radius: 6px; border: 2px solid transparent;
+    margin: 2px 8px; padding: 14px 24px;
+}
+QPushButton#navButton:checked {
+    border: 2px solid @outline; border-radius: 6px;
+    background: @primary; color: @on_primary;
+}
+QPushButton#createBtn {
+    border-radius: 6px; border: 2px solid @outline;
+    background: @primary;
+}
+QPushButton#createBtn:hover {
+    background: @primary_container; border: 2px solid @on_surface;
+}
+QPushButton#browseDownloadBtnWide {
+    border-radius: 6px; border: 2px solid @outline;
+    background: @primary;
+}
+QFrame#browseCard {
+    border-radius: 8px; border: 2px solid @outline_variant;
+}
+QFrame#browseCard:hover {
+    border: 2px solid @on_surface;
+}
+QFrame#settingsCard {
+    border-radius: 8px; border: 2px solid @outline_variant;
+}
+QLineEdit#searchBar {
+    border-radius: 6px; border: 2px solid @outline;
+}
+QLineEdit#searchBar:focus { border: 2px solid @on_surface; }
+QFrame#sidebar {
+    border-right: 2px solid @outline_variant;
+}
+QFrame#playerBar {
+    border-top: 2px solid @outline_variant;
+}
+QPushButton#externalBrowseBtn {
+    border-radius: 6px; border: 2px solid @outline;
+    background: @primary;
+}
+QPushButton#suggestPill {
+    border-radius: 4px; border: 2px solid @outline_variant;
+}
+QPushButton#suggestPill:hover {
+    border: 2px solid @on_surface; background: @surface_container_high;
+}
+QFrame#albumArt {
+    border-radius: 4px; border: 2px solid @outline_variant;
+}
+QComboBox#sortCombo {
+    border-radius: 6px; border: 2px solid @outline;
+}
+"""
 
 # ===== Utility =====
 def get_metadata(fp):
@@ -1414,6 +1735,151 @@ def get_metadata(fp):
             if a.pictures: m["art"]=a.pictures[0].data
     except: pass
     return m
+
+# ===== v20: LYRICS — LRCLIB + KuGou fallback, 30-day cache =====
+# Per ADR-001: LRCLIB primary (free, no API key, English), KuGou fallback (Chinese).
+# Cache: ~/.aurora-player/lyrics_cache/<trackhash>.json, TTL 30 days.
+LYRICS_CACHE_DIR = CONFIG_DIR / "lyrics_cache"
+LYRICS_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days
+
+def _lyrics_cache_key(track_title: str, artist: str, duration_ms: int = 0) -> str:
+    """Stable cache key for a track."""
+    import hashlib
+    raw = f"{(artist or '').strip().lower()}|{(track_title or '').strip().lower()}|{duration_ms}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+def _parse_lrc(lrc_text: str):
+    """Parse standard LRC format: [mm:ss.xx]Lyric text.
+    Returns list of (time_ms, text) tuples, sorted by time."""
+    import re
+    if not lrc_text:
+        return []
+    TIME_RE = re.compile(r"\[(\d+):(\d+)(?:[.:](\d+))?\]")
+    out = []
+    for line in lrc_text.splitlines():
+        matches = TIME_RE.findall(line)
+        if not matches:
+            continue
+        # Text after last timestamp
+        last_end = line.rfind("]") + 1
+        text = line[last_end:].strip()
+        for (m, s, ms) in matches:
+            try:
+                total_ms = int(m) * 60_000 + int(s) * 1000
+                if ms:
+                    # Pad/truncate to 3 digits
+                    total_ms += int(ms.ljust(3, "0")[:3])
+                out.append((total_ms, text))
+            except (ValueError, IndexError):
+                continue
+    out.sort(key=lambda x: x[0])
+    return out
+
+def _lyrics_track_hash(track: dict) -> str:
+    """Hash a track dict for cache lookup. Falls back to title+artist."""
+    title = (track or {}).get("title", "") or ""
+    artist = (track or {}).get("artist", "") or ""
+    duration_ms = int((track or {}).get("duration", 0) or 0) * 1000  # duration is in seconds
+    return _lyrics_cache_key(title, artist, duration_ms)
+
+def fetch_lyrics(track: dict):
+    """v20: Fetch synced lyrics for a track.
+    Returns dict: { 'lines': [(time_ms, text), ...], 'source': 'lrclib'|'kugou'|'cache'|'none' }
+    Lines is empty list if no lyrics found.
+    """
+    if not track or not track.get("title"):
+        return {"lines": [], "source": "none"}
+    title = track["title"]
+    artist = track.get("artist", "")
+    duration_sec = int(track.get("duration", 0) or 0)
+    duration_ms = duration_sec * 1000
+    cache_key = _lyrics_track_hash(track)
+    cache_file = LYRICS_CACHE_DIR / f"{cache_key}.json"
+    # 1. Try cache (30-day TTL)
+    try:
+        if cache_file.exists():
+            import json as _json, time as _time
+            data = _json.loads(cache_file.read_text())
+            age = _time.time() - data.get("fetched_at", 0)
+            if age < LYRICS_CACHE_TTL_SECONDS:
+                return {"lines": data.get("lines", []), "source": "cache"}
+    except Exception:
+        pass
+    # 2. Try LRCLIB
+    try:
+        import urllib.request, urllib.parse, json as _json
+        params = urllib.parse.urlencode({
+            "track_name": title,
+            "artist_name": artist,
+            "duration": duration_sec,
+        })
+        url = f"https://lrclib.net/api/get?{params}"
+        req = urllib.request.Request(url, headers={"User-Agent": "AuroraMusic/20.0 (Linux)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 200:
+                data = _json.loads(resp.read().decode("utf-8", "replace"))
+                synced = data.get("syncedLyrics") or data.get("plainLyrics")
+                if synced:
+                    lines = _parse_lrc(synced) if "[" in synced[:50] else [
+                        (i * 5000, ln) for i, ln in enumerate(synced.splitlines()) if ln.strip()
+                    ]
+                    if lines:
+                        _save_lyrics_cache(cache_file, lines, "lrclib")
+                        return {"lines": lines, "source": "lrclib"}
+    except Exception as e:
+        print(f"[Aurora][Lyrics] LRCLIB failed: {e}", flush=True)
+    # 3. Try KuGou (Chinese lyrics)
+    try:
+        import urllib.request, urllib.parse, json as _json, hashlib, base64
+        search_url = "https://krcs.kugou.com/search"
+        params = urllib.parse.urlencode({
+            "ver": 1, "man": "yes", "client": "mobi",
+            "hash": hashlib.md5(f"{title}-{artist}".encode("utf-8")).hexdigest(),
+            "keyword": f"{title} {artist}",
+            "duration": duration_ms,
+        })
+        url = f"{search_url}?{params}"
+        req = urllib.request.Request(url, headers={"User-Agent": "AuroraMusic/20.0 (Linux)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode("utf-8", "replace"))
+            candidates = data.get("candidates") or []
+            if not candidates:
+                return {"lines": [], "source": "none"}
+            cand = candidates[0]
+            # Fetch lyrics content
+            dl_url = f"https://lyrics.kugou.com/download?id={cand['id']}&accesskey={cand['accesskey']}&fmt=lrc&charset=utf8"
+            req2 = urllib.request.Request(dl_url, headers={"User-Agent": "AuroraMusic/20.0 (Linux)"})
+            with urllib.request.urlopen(req2, timeout=5) as resp2:
+                ddata = _json.loads(resp2.read().decode("utf-8", "replace"))
+                content_b64 = ddata.get("content")
+                if content_b64:
+                    lrc = base64.b64decode(content_b64).decode("utf-8", "replace")
+                    lines = _parse_lrc(lrc)
+                    if lines:
+                        _save_lyrics_cache(cache_file, lines, "kugou")
+                        return {"lines": lines, "source": "kugou"}
+    except Exception as e:
+        print(f"[Aurora][Lyrics] KuGou failed: {e}", flush=True)
+    # 4. No lyrics found — cache negative result for 1 day to avoid hammering
+    try:
+        _save_lyrics_cache(cache_file, [], "none", ttl=24 * 3600)
+    except Exception:
+        pass
+    return {"lines": [], "source": "none"}
+
+def _save_lyrics_cache(cache_file, lines, source, ttl=LYRICS_CACHE_TTL_SECONDS):
+    """Persist lyrics to cache file."""
+    try:
+        import json as _json, time as _time
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(_json.dumps({
+            "lines": lines,
+            "source": source,
+            "fetched_at": _time.time(),
+            "ttl": ttl,
+        }))
+    except Exception as e:
+        print(f"[Aurora][Lyrics] cache save failed: {e}", flush=True)
 
 def fmt_time(s):
     s=max(0,int(s)); h=s//3600; m=(s%3600)//60; sec=s%60
@@ -2107,7 +2573,7 @@ class Downloader(QThread):
         if not audio_url:
             return None, "all 3 Invidious instances failed"
         # Download the audio URL via ffmpeg → MP3
-        tmp_src = str(MUSIC_FOLDER / ".aurora-tmp" / f"invidious_{tid}.src")
+        tmp_src = str(MUSIC_FOLDER() / ".aurora-tmp" / f"invidious_{tid}.src")
         Path(tmp_src).parent.mkdir(parents=True, exist_ok=True)
         self._emit(tid, 50)
         cmd_ff = [ffmpeg, "-y", "-i", audio_url, "-vn", "-acodec", "libmp3lame",
@@ -2159,7 +2625,7 @@ class Downloader(QThread):
                 print(f"[Aurora][Browse] Innertube {client_name} returned audio URL", flush=True)
                 self._emit(tid, 50)
                 # ffmpeg → MP3
-                tmp_src = str(MUSIC_FOLDER / ".aurora-tmp" / f"innertube_{tid}_{client_name}.src")
+                tmp_src = str(MUSIC_FOLDER() / ".aurora-tmp" / f"innertube_{tid}_{client_name}.src")
                 Path(tmp_src).parent.mkdir(parents=True, exist_ok=True)
                 cmd_ff = [ffmpeg, "-y", "-i", audio_url, "-vn", "-acodec", "libmp3lame",
                           "-q:a", "2", "-user_agent", user_agent, tmp_src]
@@ -2316,7 +2782,7 @@ class Downloader(QThread):
                 self.done.emit(tid, "", False,
                     "ffmpeg not installed. Install with: sudo apt install ffmpeg")
                 return
-            dest = MUSIC_FOLDER / t.safe_filename("mp3")
+            dest = MUSIC_FOLDER() / t.safe_filename("mp3")
             # Idempotent: skip if already downloaded
             if dest.exists() and dest.stat().st_size > 10240:
                 self._emit(tid, 100)
@@ -2334,7 +2800,7 @@ class Downloader(QThread):
             self._emit(tid, self.P_SEARCH_DONE)
             watch_url = f"https://www.youtube.com/watch?v={video_id}"
             # ---- 2. Try each strategy in order ----
-            tmp_dir = MUSIC_FOLDER / ".aurora-tmp"
+            tmp_dir = MUSIC_FOLDER() / ".aurora-tmp"
             tmp_dir.mkdir(parents=True, exist_ok=True)
             stem = f"aurora_{tid}_{int(datetime.now().timestamp())}"
             out_tmpl = str(tmp_dir / f"{stem}.%(ext)s")
@@ -2503,7 +2969,7 @@ class BrowseResultCard(QFrame):
         self.download_btn.setIconSize(QSize(16,16))
         self.download_btn.setFixedHeight(36)
         self.download_btn.setCursor(Qt.PointingHandCursor)
-        self.download_btn.setToolTip("Download full track to ~/Downloads/ (MP3, ~190kbps)")
+        self.download_btn.setToolTip(f"Download full track to {MUSIC_FOLDER()}/ (MP3, ~190kbps)")
         self.download_btn.clicked.connect(lambda: self.downloadRequested.emit(self.track))
         btn_row.addWidget(self.download_btn)
         lay.addLayout(btn_row)
@@ -2535,7 +3001,7 @@ class BrowseResultCard(QFrame):
             self.download_btn.setToolTip(f"Downloading {pct}%")
         else:
             self.download_btn.setIcon(_svg(IC_DOWNLOAD, M3["on_primary"]))
-            self.download_btn.setToolTip("Download to ~/Downloads/")
+            self.download_btn.setToolTip(f"Download to {MUSIC_FOLDER()}/")
         self.download_btn.update()
     def set_downloaded(self, ok=True):
         """Visual state: completed (green check) or failed (red)."""
@@ -2553,12 +3019,12 @@ class Scanner(QThread):
     def run(self):
         songs=[]
         try:
-            if not MUSIC_FOLDER.exists():
-                MUSIC_FOLDER.mkdir(parents=True, exist_ok=True)
+            if not MUSIC_FOLDER().exists():
+                MUSIC_FOLDER().mkdir(parents=True, exist_ok=True)
                 self.done.emit([]); return
             # Sort by mtime (newest first); guard against stat() failures on deleted files
             file_list = []
-            for fp in MUSIC_FOLDER.iterdir():
+            for fp in MUSIC_FOLDER().iterdir():
                 try:
                     file_list.append((fp, fp.stat().st_mtime))
                 except OSError:
@@ -2654,7 +3120,7 @@ class MprisCtrl:
             # the calling thread forever. Called from Win.__init__, this froze the
             # entire Qt event loop -> no UI, no scanner, no IPC, no playerctl.
             # Run the GLib MainLoop in a daemon thread so Qt can run in main thread.
-            self.server.loop(background=True)
+            import threading; threading.Thread(target=self.server.loop, daemon=True).start()
             print(f"[Aurora] MPRIS: org.mpris.MediaPlayer2.{APP_DBUS}", flush=True)
         except Exception as e: print(f"[Aurora] MPRIS fail: {e}", flush=True)
     def update(self):
@@ -2703,7 +3169,15 @@ class Win(QMainWindow):
         # each buffer and feed the spectrum to the Visualizer. This makes the
         # bars literally move with the actual audio output (like CAVA does).
         self._setup_audio_buffer_output()
+        # v20: Sleep timer + Crossfade state (per ADR-002, ADR-004)
+        self._sleep_timer = None  # QTimer.singleShot handle
+        self._sleep_fade_timer = None  # 5s fade-out timer
+        self._sleep_target_volume = 0.0
+        self._crossfade_seconds = float(self.cfg.get("crossfade_seconds", 0) or 0)
         self._build(); self._shortcuts(); self._tray()
+        # v20: Show onboarding on first run (per ADR-003)
+        if not self.cfg.get("onboarded_v20"):
+            QTimer.singleShot(800, self._show_onboarding)  # delay so window is ready
         # v12.2: keep play/pause icon + status file in sync with the REAL
         # playback state (the old self.playing flag drifted out of sync,
         # e.g. after EndOfMedia, making the toggle button do the wrong thing).
@@ -2712,7 +3186,7 @@ class Win(QMainWindow):
         self.remote_cmd.connect(self._on_remote_cmd)
         # v15: async beat-graph level scanner + EQ-badge repaint ticker
         self.lv_scanner=LevelScanner(self); self.lv_scanner.done.connect(self._levels_done)
-        self.eq_timer=QTimer(self); self.eq_timer.setInterval(120); self.eq_timer.timeout.connect(self._eq_tick)
+        self.eq_timer=QTimer(self); self.eq_timer.setInterval(200); self.eq_timer.timeout.connect(self._eq_tick)  # v17.6: slower (was 120ms)
         self.mpris=MprisCtrl(self); self.scan()
         # v14: auto-rescan every 10 min (was 30 s — wasteful on a Celeron);
         # there is now a manual Refresh button + F5 for instant rescans.
@@ -2772,42 +3246,41 @@ class Win(QMainWindow):
         self.viz=Visualizer(self); self.viz.setVisible(bool(self.cfg.get("show_viz",True)))
         cl.addWidget(self.viz)
         # Player bar
-        pb=QFrame(); pb.setObjectName("playerBar"); pb.setFixedHeight(100)
-        pl=QHBoxLayout(pb); pl.setContentsMargins(24,14,24,14); pl.setSpacing(16)
+        pb=QFrame(); pb.setObjectName("playerBar"); pb.setFixedHeight(110)
+        pl=QHBoxLayout(pb); pl.setContentsMargins(24,10,24,10); pl.setSpacing(16)
         self.art=QLabel(""); self.art.setObjectName("albumArt"); self.art.setAlignment(Qt.AlignCenter)
         self.art.setStyleSheet(f"font-size:11px;color:{M3['on_surface_variant']};"); pl.addWidget(self.art)
         il=QVBoxLayout(); il.setSpacing(2)
-        # v17.0: AnimatedNowPlaying widget (pulsing dot + dancing bars)
-        # sits above the title to show playback state with motion graphics
-        self.now_playing_anim = AnimatedNowPlaying(self)
-        self.now_playing_anim.win = self
-        il.addWidget(self.now_playing_anim)
+        # v17.6: Removed AnimatedNowPlaying (was cluttering the player bar)
+        # The play/pause icon already shows state — no need for extra widget.
         # v14: ElideLabel + Ignored horizontal policy — long titles now elide
-        # with "..." instead of squeezing the control buttons (resize glitch fix)
         self.tl=ElideLabel("No song selected"); self.tl.setObjectName("titleLabel")
         self.tl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred); il.addWidget(self.tl)
         self.al=ElideLabel("Select a song from the library"); self.al.setObjectName("artistLabel")
         self.al.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred); il.addWidget(self.al)
         self.tl.setMinimumWidth(160); self.al.setMinimumWidth(160)
-        # v17.5: A-B Loop buttons — two small buttons below the song title.
-        # Click A to mark start point, click B to mark end point.
-        # Song loops between A and B until song changes.
-        # A and B persist for the current song only — changing song resets them.
-        ab_row = QHBoxLayout(); ab_row.setSpacing(6); ab_row.setContentsMargins(0,0,0,0)
-        self.ab_a_btn = QPushButton(" A"); self.ab_a_btn.setObjectName("abButton")
-        self.ab_a_btn.setFixedSize(32, 22); self.ab_a_btn.setCursor(Qt.PointingHandCursor)
+        # v17.6: A-B Loop — clean row below song title.
+        # A and B buttons show timestamps when set. Clear button resets.
+        # When both A and B are set, a status label shows "LOOPING" in primary color.
+        ab_row = QHBoxLayout(); ab_row.setSpacing(8); ab_row.setContentsMargins(0,2,0,0)
+        self.ab_a_btn = QPushButton("A"); self.ab_a_btn.setObjectName("abButton")
+        self.ab_a_btn.setFixedSize(36, 24); self.ab_a_btn.setCursor(Qt.PointingHandCursor)
         self.ab_a_btn.setToolTip("Set A point (loop start) — click while playing")
         self.ab_a_btn.setCheckable(True)
         self.ab_a_btn.clicked.connect(lambda: self._ab_set("A"))
         ab_row.addWidget(self.ab_a_btn)
-        self.ab_b_btn = QPushButton(" B"); self.ab_b_btn.setObjectName("abButton")
-        self.ab_b_btn.setFixedSize(32, 22); self.ab_b_btn.setCursor(Qt.PointingHandCursor)
+        self.ab_b_btn = QPushButton("B"); self.ab_b_btn.setObjectName("abButton")
+        self.ab_b_btn.setFixedSize(36, 24); self.ab_b_btn.setCursor(Qt.PointingHandCursor)
         self.ab_b_btn.setToolTip("Set B point (loop end) — click while playing")
         self.ab_b_btn.setCheckable(True)
         self.ab_b_btn.clicked.connect(lambda: self._ab_set("B"))
         ab_row.addWidget(self.ab_b_btn)
+        # A-B status label — shows "LOOPING A→B" when active, or timestamps
+        self.ab_status = QLabel(""); self.ab_status.setObjectName("abStatus")
+        self.ab_status.setStyleSheet(f"font-size:10px; color:{M3['outline']}; padding:0 4px; background:transparent;")
+        ab_row.addWidget(self.ab_status)
         self.ab_clear_btn = QPushButton("Clear"); self.ab_clear_btn.setObjectName("abClearBtn")
-        self.ab_clear_btn.setFixedSize(50, 22); self.ab_clear_btn.setCursor(Qt.PointingHandCursor)
+        self.ab_clear_btn.setFixedSize(48, 24); self.ab_clear_btn.setCursor(Qt.PointingHandCursor)
         self.ab_clear_btn.setToolTip("Clear A-B loop")
         self.ab_clear_btn.clicked.connect(self._ab_clear)
         ab_row.addWidget(self.ab_clear_btn)
@@ -2844,6 +3317,21 @@ class Win(QMainWindow):
         self.dev_btn = QPushButton(""); self.dev_btn.setIcon(_svg(IC_AUDIO_DEVICE)); self.dev_btn.setObjectName("controlButton")
         self.dev_btn.setFixedSize(40,40); self.dev_btn.setToolTip("Audio Output Device")  # M3: 40dp icon button
         self.dev_btn.clicked.connect(self._show_device_selector); vl.addWidget(self.dev_btn)
+        # v20: Sleep timer button (moon icon)
+        self.sleep_btn = QPushButton(""); self.sleep_btn.setObjectName("controlButton")
+        self.sleep_btn.setIcon(_svg(IC_AUDIO_DEVICE))  # reuse icon; could add IC_MOON later
+        self.sleep_btn.setFixedSize(40,40); self.sleep_btn.setToolTip("Sleep Timer (v20)")
+        self.sleep_btn.setCursor(Qt.PointingHandCursor)
+        self.sleep_btn.setText("💤"); self.sleep_btn.setStyleSheet("font-size:18px; border:none; background:transparent;")
+        self.sleep_btn.clicked.connect(self._show_sleep_timer_dialog)
+        vl.addWidget(self.sleep_btn)
+        # v20: Lyrics button (📝)
+        self.lyrics_btn = QPushButton(""); self.lyrics_btn.setObjectName("controlButton")
+        self.lyrics_btn.setFixedSize(40,40); self.lyrics_btn.setToolTip("Lyrics (v20) — synced lyrics overlay")
+        self.lyrics_btn.setCursor(Qt.PointingHandCursor)
+        self.lyrics_btn.setText("📝"); self.lyrics_btn.setStyleSheet("font-size:16px; border:none; background:transparent;")
+        self.lyrics_btn.clicked.connect(self._show_lyrics_overlay)
+        vl.addWidget(self.lyrics_btn)
         # v16: EXTERNAL BROWSE BUTTON — always visible in the player bar so the
         # user can jump to Browse (online search + 1-click download) from ANY
         # page with a single click. Filled primary-container button (M3 spec).
@@ -2882,7 +3370,7 @@ class Win(QMainWindow):
     def _lib_view(self):
         w=QWidget(); l=QVBoxLayout(w); l.setContentsMargins(0,0,0,0); l.setSpacing(0)
         t=QLabel("Library"); t.setObjectName("pageTitle"); l.addWidget(t)
-        self.sub=QLabel("Scanning ~/Downloads/..."); self.sub.setObjectName("pageSubtitle"); l.addWidget(self.sub)
+        self.sub=QLabel(f"Scanning {MUSIC_FOLDER()}/..."); self.sub.setObjectName("pageSubtitle"); l.addWidget(self.sub)
         bar=QHBoxLayout(); bar.setContentsMargins(28,0,28,12)
         self.srch=QLineEdit(); self.srch.setObjectName("searchBar"); self.srch.setPlaceholderText("Search songs, artists, albums..."); self.srch.textChanged.connect(self._refresh); bar.addWidget(self.srch,stretch=1)
         self.sortc=QComboBox(); self.sortc.setObjectName("sortCombo"); self.sortc.addItems(["Date Added","Title","Artist","Album"]); self.sortc.currentIndexChanged.connect(self._sortc); bar.addWidget(self.sortc)
@@ -3404,7 +3892,7 @@ class Win(QMainWindow):
         if not track or not track.title:
             print("[Aurora][Browse] play: no track title", flush=True); return
         # v16.9: If already downloaded as full MP3, play the full track
-        dest = MUSIC_FOLDER / track.safe_filename("mp3")
+        dest = MUSIC_FOLDER() / track.safe_filename("mp3")
         if dest.exists() and dest.stat().st_size > 10240:
             print(f"[Aurora][Browse] play: already downloaded — playing full track {dest.name}", flush=True)
             self.browse_status.setText(f"Playing (full track): {track.title}")
@@ -3430,7 +3918,7 @@ class Win(QMainWindow):
             print("[Aurora][Browse] no track title — cannot download", flush=True)
             return
         # Idempotent: skip if the file already exists in ~/Downloads/
-        dest = MUSIC_FOLDER / track.safe_filename("mp3")
+        dest = MUSIC_FOLDER() / track.safe_filename("mp3")
         if dest.exists() and dest.stat().st_size > 10240:
             self._mark_card_downloaded(track.track_id, True)
             self.browse_status.setText(f"Already downloaded: {track.title} — check Library")
@@ -4129,8 +4617,67 @@ class Win(QMainWindow):
             tt=QLabel(title); tt.setObjectName("cardTitle"); h.addWidget(tt); h.addStretch(); cl.addLayout(h)
             dd=QLabel(desc); dd.setObjectName("cardDesc"); dd.setWordWrap(True); cl.addWidget(dd)
             bl.addWidget(c); return c,cl,ic
-        # --- Theme color card ---
-        c1,c1l,self._theme_icon=card("Theme color","Drag the slider — the whole Material 3 palette regenerates live from that hue. Every surface, button and the beat graph follow.",IC_PALETTE)
+        # --- v18: Theme selector card (NEW) ---
+        ct,ctl,self._theme_sel_icon = card("Themes (v21 improved)",
+            "4 themes reverse-engineered from Beatbox, Nora, and Nuclear music players. "
+            "Tap a chip below to switch instantly. Aurora Indigo = default with live hue slider. "
+            "Aurora Neon = synthwave pink/purple. Aurora Material = clean blue-grey. "
+            "Aurora Brutalist = neobrutalist coral.",
+            IC_PALETTE)
+        tm_row = QHBoxLayout(); tm_row.setSpacing(10)
+        tm_lbl = QLabel("Theme:"); tm_lbl.setObjectName("cardDesc"); tm_row.addWidget(tm_lbl)
+        self.theme_combo = QComboBox(); self.theme_combo.setObjectName("sortCombo")
+        for name in THEME_NAMES:
+            self.theme_combo.addItem(name)
+        saved_theme = self.cfg.get("theme_id", THEME_DEFAULT)
+        self.theme_combo.setCurrentIndex(max(0, min(3, saved_theme)))
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        tm_row.addWidget(self.theme_combo, stretch=1)
+        # Theme preview color chips
+        self._theme_chips = []
+        for i, name in enumerate(THEME_NAMES):
+            pal = THEMES.get(i, DEFAULT_M3)
+            chip = QLabel(); chip.setFixedSize(20, 20)
+            chip.setStyleSheet(f"background:{pal.get('primary','#6366F1')}; border-radius:10px; border:1px solid rgba(255,255,255,0.2);")
+            tm_row.addWidget(chip); self._theme_chips.append(chip)
+        tm_row.addStretch()
+        ctl.addLayout(tm_row)
+        # v21: Theme preview cards (clickable, show name + 3 swatches per theme)
+        preview_row = QHBoxLayout(); preview_row.setSpacing(8)
+        for i, name in enumerate(THEME_NAMES):
+            pal = THEMES.get(i, DEFAULT_M3)
+            preview_card = QPushButton()
+            preview_card.setFixedSize(80, 56)
+            preview_card.setCursor(Qt.PointingHandCursor)
+            preview_card.setToolTip(f"Switch to {name}")
+            # Background = primary color of this theme
+            bg = pal.get('primary', '#6366F1')
+            on_color = pal.get('on_primary', '#FFFFFF') if bg != '#000000' else '#FFFFFF'
+            sec = pal.get('secondary', '#625B71')
+            tert = pal.get('tertiary', '#7D5260')
+            preview_card.setStyleSheet(f"""
+                QPushButton {{
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 {bg}, stop:0.5 {sec}, stop:1 {tert});
+                    border-radius: 12px;
+                    border: 2px solid {'@primary' if i == saved_theme else 'rgba(255,255,255,0.1)'};
+                    color: {on_color};
+                    font-size: 10px;
+                    font-weight: 600;
+                    padding: 4px;
+                    text-align: bottom;
+                }}
+                QPushButton:hover {{
+                    border: 2px solid @primary;
+                }}
+            """)
+            preview_card.setText(name.replace("Aurora ", ""))
+            preview_card.clicked.connect(lambda _, idx=i: self._set_theme_by_index(idx))
+            preview_row.addWidget(preview_card)
+        preview_row.addStretch()
+        ctl.addLayout(preview_row)
+        # --- Theme color card (existing hue slider — still works for Indigo theme) ---
+        c1,c1l,self._theme_icon=card("Theme color (hue slider)","Drag the slider — the Aurora Indigo palette regenerates live from that hue. Only applies to Theme 0 (Aurora Indigo).",IC_PALETTE)
         hs=QHBoxLayout(); hs.setSpacing(14)
         self.hue_slider=ClickSlider(Qt.Horizontal); self.hue_slider.setObjectName("hueSlider")
         self.hue_slider.setRange(0,359); self.hue_slider.setValue(int(self.cfg.get("theme_hue",DEFAULT_HUE))%360)
@@ -4186,6 +4733,48 @@ class Win(QMainWindow):
         dv.clicked.connect(self._show_device_selector)
         self._dev_choose_btn=dv
         dh=QHBoxLayout(); dh.addWidget(dv); dh.addStretch(); c3l.addLayout(dh)
+        # --- v20: Crossfade card (configurable crossfade duration) ---
+        c_cf,c_cfl,_ = card("Crossfade (v20)",
+            "Blend songs into each other instead of hard cuts. "
+            "Set to 0 to disable. Range: 0-12 seconds.",
+            IC_AUDIO_DEVICE)
+        cf_row = QHBoxLayout(); cf_row.setSpacing(10)
+        cf_lbl = QLabel("Crossfade (seconds):"); cf_lbl.setObjectName("cardDesc")
+        cf_row.addWidget(cf_lbl)
+        cf_spin = QSpinBox(); cf_spin.setObjectName("sortCombo")
+        cf_spin.setRange(0, 12); cf_spin.setSuffix(" s")
+        cf_spin.setValue(int(self.cfg.get("crossfade_seconds", 0) or 0))
+        cf_spin.valueChanged.connect(self._on_crossfade_changed)
+        cf_row.addWidget(cf_spin); cf_row.addStretch()
+        c_cfl.addLayout(cf_row)
+        # --- v19.2: Music library path card (configurable download folder) ---
+        c_mf,c_mfl,_ = card("Music library path (v19.2)",
+            "Choose where Aurora saves downloaded songs and scans for local music. "
+            "Default: ~/Downloads. Changes apply immediately to new downloads and rescans.",
+            IC_OPEN_EXTERNAL)
+        self._music_folder_lbl = QLabel(str(MUSIC_FOLDER()))
+        self._music_folder_lbl.setObjectName("cardDesc")
+        self._music_folder_lbl.setWordWrap(True)
+        c_mfl.addWidget(self._music_folder_lbl)
+        mf_row = QHBoxLayout(); mf_row.setSpacing(8)
+        mf_pick = QPushButton("  Choose Folder…")
+        mf_pick.setObjectName("tonalBtn")
+        mf_pick.setIcon(_svg(IC_OPEN_EXTERNAL, M3["on_secondary_container"]))
+        mf_pick.setCursor(Qt.PointingHandCursor)
+        mf_pick.clicked.connect(self._on_music_folder_pick)
+        mf_row.addWidget(mf_pick)
+        mf_reset = QPushButton("Reset to ~/Downloads")
+        mf_reset.setObjectName("tonalBtn")
+        mf_reset.setCursor(Qt.PointingHandCursor)
+        mf_reset.clicked.connect(self._on_music_folder_reset)
+        mf_row.addWidget(mf_reset)
+        mf_open = QPushButton("Open")
+        mf_open.setObjectName("tonalBtn")
+        mf_open.setCursor(Qt.PointingHandCursor)
+        mf_open.clicked.connect(self._open_music_folder)
+        mf_row.addWidget(mf_open)
+        mf_row.addStretch()
+        c_mfl.addLayout(mf_row)
         # --- v16.6: YouTube Auth card (bot-protection bypass) ---
         c5,c5l,self._yt_auth_icon = card("YouTube Auth (v16.6)",
             "Browse downloads use multi-strategy bot-protection bypass: cookies-from-browser → "
@@ -4250,13 +4839,54 @@ class Win(QMainWindow):
         c5l.addLayout(cookie_row)
         # Auth status display
         self._update_yt_auth_status()
-        # --- About card ---
+        # --- About card (v21: improved with credits + features + tech stack) ---
         c4,c4l,_=card("About",
             f"Aurora Music Player v{APP_VERSION}\n"
-            f"Compatible with agent. CLI available.\n"
-            f"Library: ~/Downloads/ (auto-scan, F5 to refresh).\n"
+            f"Built with Kotlin-inspired design • Material 3 Expressive\n\n"
+            f"🎵  Full-song downloads (no 30-second caps)\n"
+            f"📝  Synced lyrics (LRCLIB + KuGou)\n"
+            f"💤  Sleep timer with fade-out\n"
+            f"🎚  Crossfade (0-12s) + CAVA-style monstercat visualizer\n"
+            f"🔁  A-B Loop + universal shuffle/repeat\n"
+            f"📁  Configurable music folder\n\n"
+            f"Library: {MUSIC_FOLDER()} (auto-scan, F5 to refresh)\n"
+            f"Tech: Python + PySide6 + Qt Multimedia + yt-dlp + ffmpeg\n"
             f"Agent-controllable via playerctl or aurora-player CLI.",
             IC_MUSIC)
+        # v21: Links row in About card
+        links_row = QHBoxLayout(); links_row.setSpacing(8)
+        gh_btn = QPushButton("  GitHub")
+        gh_btn.setObjectName("tonalBtn")
+        gh_btn.setCursor(Qt.PointingHandCursor)
+        gh_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:@secondary_container; color:@on_secondary_container;
+                          border-radius:16px; padding:6px 14px; font-size:12px; font-weight:500; }
+            QPushButton:hover { background:@secondary_container_hover; }
+        """))
+        gh_btn.clicked.connect(lambda: self._open_url("https://github.com/"))
+        links_row.addWidget(gh_btn)
+        docs_btn = QPushButton("  Material 3 Docs")
+        docs_btn.setObjectName("tonalBtn")
+        docs_btn.setCursor(Qt.PointingHandCursor)
+        docs_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:@secondary_container; color:@on_secondary_container;
+                          border-radius:16px; padding:6px 14px; font-size:12px; font-weight:500; }
+            QPushButton:hover { background:@secondary_container_hover; }
+        """))
+        docs_btn.clicked.connect(lambda: self._open_url("https://m3.material.io/"))
+        links_row.addWidget(docs_btn)
+        cava_btn = QPushButton("  CAVA (visualizer ref)")
+        cava_btn.setObjectName("tonalBtn")
+        cava_btn.setCursor(Qt.PointingHandCursor)
+        cava_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:@secondary_container; color:@on_secondary_container;
+                          border-radius:16px; padding:6px 14px; font-size:12px; font-weight:500; }
+            QPushButton:hover { background:@secondary_container_hover; }
+        """))
+        cava_btn.clicked.connect(lambda: self._open_url("https://github.com/karlstav/cava"))
+        links_row.addWidget(cava_btn)
+        links_row.addStretch()
+        c4l.addLayout(links_row)
         bl.addStretch()
         scroll.setWidget(body); outer.addWidget(scroll)
         self._update_hue_chip()
@@ -4305,6 +4935,314 @@ class Win(QMainWindow):
                   f"cookies_file={'set' if cookies_file else 'none'} "
                   f"cookies_str={'set' if cookies_str else 'none'}", flush=True)
         except Exception: pass
+
+    # ===== v19.2: Music library path handlers =====
+    def _on_crossfade_changed(self, seconds: int):
+        """v20: Persist crossfade setting. Actual crossfade applied on next play_idx."""
+        self._crossfade_seconds = float(seconds)
+        self.cfg["crossfade_seconds"] = seconds
+        save_cfg(self.cfg)
+        print(f"[Aurora][v20] Crossfade set to {seconds}s", flush=True)
+
+    def _open_url(self, url: str):
+        """v21: Open a URL in the system default browser."""
+        from PySide6.QtGui import QDesktopServices
+        try:
+            QDesktopServices.openUrl(QUrl(url))
+        except Exception as e:
+            print(f"[Aurora][v21] open URL failed: {e}", flush=True)
+
+    def _on_music_folder_pick(self):
+        """Open a folder picker for the user to choose the music library path."""
+        from PySide6.QtWidgets import QFileDialog
+        start_dir = str(MUSIC_FOLDER())
+        path = QFileDialog.getExistingDirectory(
+            self, "Choose Music Library / Download Folder", start_dir)
+        if path:
+            self.cfg["music_folder"] = path; save_cfg(self.cfg)
+            if hasattr(self, "_music_folder_lbl"):
+                self._music_folder_lbl.setText(path)
+            print(f"[Aurora][v19.2] Music folder set: {path}", flush=True)
+            # Trigger a rescan so the library reflects the new folder
+            try: self.scan()
+            except Exception: pass
+
+    def _on_music_folder_reset(self):
+        """Reset music folder to the default ~/Downloads."""
+        self.cfg.pop("music_folder", None); save_cfg(self.cfg)
+        if hasattr(self, "_music_folder_lbl"):
+            self._music_folder_lbl.setText(str(MUSIC_FOLDER()))
+        print("[Aurora][v19.2] Music folder reset to ~/Downloads", flush=True)
+        try: self.scan()
+        except Exception: pass
+
+    def _open_music_folder(self):
+        """Open the configured music folder in the OS file manager."""
+        from PySide6.QtGui import QDesktopServices
+        folder = str(MUSIC_FOLDER())
+        try:
+            folder = str(Path(folder).expanduser().resolve())
+            if not Path(folder).exists():
+                Path(folder).mkdir(parents=True, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+        except Exception as e:
+            print(f"[Aurora][v19.2] open folder failed: {e}", flush=True)
+
+    # ===== v20: Sleep timer =====
+    def _start_sleep_timer(self, minutes: int):
+        """v20 ADR-002: Start sleep timer. On fire, fade out over 5s then pause."""
+        if minutes <= 0:
+            self._cancel_sleep_timer()
+            return
+        ms = int(minutes * 60 * 1000)
+        # Cancel existing
+        if self._sleep_timer: self._sleep_timer.stop()
+        self._sleep_timer = QTimer(self)
+        self._sleep_timer.setSingleShot(True)
+        self._sleep_timer.timeout.connect(self._on_sleep_timer_fire)
+        self._sleep_timer.start(ms)
+        end_time_str = ""  # could compute end time
+        print(f"[Aurora][v20] Sleep timer set for {minutes} min", flush=True)
+        self._show_toast(f"Sleep timer: {minutes} min")
+
+    def _on_sleep_timer_fire(self):
+        """Fire: 5s fade-out, then pause."""
+        if not self.playing:
+            return
+        # Save target volume (we'll restore on next play)
+        self._sleep_target_volume = self.audio.volume()
+        # 5s fade-out in 10 steps of 500ms
+        if self._sleep_fade_timer: self._sleep_fade_timer.stop()
+        steps = 10
+        current_vol = self.audio.volume()
+        step_vol = current_vol / steps
+        self._sleep_fade_step = 0
+        self._sleep_fade_timer = QTimer(self)
+        self._sleep_fade_timer.timeout.connect(lambda: self._sleep_fade_step_fn(step_vol))
+        self._sleep_fade_timer.start(500)
+        print("[Aurora][v20] Sleep timer fired — fading out", flush=True)
+
+    def _sleep_fade_step_fn(self, step_vol: float):
+        self._sleep_fade_step = getattr(self, "_sleep_fade_step", 0) + 1
+        new_vol = max(0.0, self.audio.volume() - step_vol)
+        self.audio.setVolume(new_vol)
+        if new_vol <= 0.001 or self._sleep_fade_step >= 10:
+            self._sleep_fade_timer.stop()
+            self.pause()
+            # Restore volume silently for next play
+            self.audio.setVolume(self._sleep_target_volume if self._sleep_target_volume > 0 else self._curve(self.cfg.get("vol", 70)))
+            self._show_toast("Sleep timer: paused 🌙")
+
+    def _cancel_sleep_timer(self):
+        if self._sleep_timer:
+            self._sleep_timer.stop()
+            self._sleep_timer = None
+            self._show_toast("Sleep timer cancelled")
+        if self._sleep_fade_timer:
+            self._sleep_fade_timer.stop()
+            self._sleep_fade_timer = None
+
+    def _show_sleep_timer_dialog(self):
+        """Show sleep timer preset picker."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Sleep Timer")
+        dlg.setMinimumWidth(280)
+        dlg.setStyleSheet(f"background:{M3['surface_container_high']}; color:{M3['on_surface']};")
+        lay = QVBoxLayout(dlg)
+        title = QLabel("Sleep Timer"); title.setObjectName("cardTitle")
+        title.setStyleSheet(f"font-size:18px; font-weight:600; color:{M3['on_surface']};")
+        lay.addWidget(title)
+        desc = QLabel("Aurora will fade out and pause after the selected time.")
+        desc.setWordWrap(True); desc.setObjectName("cardDesc")
+        lay.addWidget(desc)
+        for label, mins in [("15 minutes", 15), ("30 minutes", 30), ("45 minutes", 45),
+                            ("60 minutes", 60), ("End of current song", -1)]:
+            btn = QPushButton(label)
+            btn.setStyleSheet(_m3ss("""
+                QPushButton { background:@secondary_container; color:@on_secondary_container; border-radius:20px; padding:12px; font-weight:500; text-align:left; }
+                QPushButton:hover { background:@secondary_container_hover; }
+            """))
+            btn.clicked.connect(lambda _, m=mins: (self._start_sleep_timer_or_end_song(m, dlg)))
+            lay.addWidget(btn)
+        cancel_btn = QPushButton("Cancel timer")
+        cancel_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:transparent; color:@error; border:1px solid @outline_variant; border-radius:20px; padding:10px; }
+            QPushButton:hover { background:rgba(255,180,171,0.10); }
+        """))
+        cancel_btn.clicked.connect(lambda: (self._cancel_sleep_timer(), dlg.accept()))
+        lay.addWidget(cancel_btn)
+        dlg.exec()
+
+    def _start_sleep_timer_or_end_song(self, minutes: int, dlg):
+        dlg.accept()
+        if minutes == -1:
+            # End of current song: set a flag that _status() checks
+            self._sleep_at_end_of_song = True
+            self._show_toast("Will pause after current song")
+        else:
+            self._sleep_at_end_of_song = False
+            self._start_sleep_timer(minutes)
+
+    # ===== v20: Onboarding (3 slides) =====
+    def _show_onboarding(self):
+        """v20 ADR-003: First-run onboarding. 3 slides, skippable."""
+        from PySide6.QtWidgets import QStackedWidget, QPushButton as _PB, QProgressBar
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Welcome to Aurora Music")
+        dlg.setMinimumWidth(440); dlg.setMinimumHeight(420)
+        dlg.setStyleSheet(f"background:{M3['surface']}; color:{M3['on_surface']};")
+        outer = QVBoxLayout(dlg); outer.setContentsMargins(0, 0, 0, 12); outer.setSpacing(0)
+        stack = QStackedWidget()
+        outer.addWidget(stack, stretch=1)
+        # Slide 1: Welcome
+        s1 = QWidget(); s1l = QVBoxLayout(s1); s1l.setContentsMargins(32, 32, 32, 16); s1l.setSpacing(12)
+        hero = QLabel("✨"); hero.setStyleSheet("font-size:64px;"); hero.setAlignment(Qt.AlignCenter)
+        s1l.addWidget(hero)
+        t1 = QLabel("Welcome to Aurora Music"); t1.setStyleSheet(f"font-size:24px; font-weight:700; color:{M3['on_surface']};")
+        t1.setAlignment(Qt.AlignCenter); s1l.addWidget(t1)
+        d1 = QLabel("Full songs. No ads. Yours.\n\nAurora downloads complete tracks (no 30-second caps), "
+                    "respects your privacy, and runs fully offline once you've got your library.")
+        d1.setWordWrap(True); d1.setAlignment(Qt.AlignCenter)
+        d1.setStyleSheet(f"font-size:13px; color:{M3['on_surface_variant']};")
+        s1l.addWidget(d1); s1l.addStretch()
+        stack.addWidget(s1)
+        # Slide 2: Pick music folder
+        s2 = QWidget(); s2l = QVBoxLayout(s2); s2l.setContentsMargins(32, 32, 32, 16); s2l.setSpacing(12)
+        t2 = QLabel("Pick your music folder"); t2.setStyleSheet(f"font-size:20px; font-weight:700; color:{M3['on_surface']};")
+        t2.setAlignment(Qt.AlignCenter); s2l.addWidget(t2)
+        d2 = QLabel(f"Currently using:\n{MUSIC_FOLDER()}\n\nThis is where Aurora saves downloads and scans for local music. "
+                    "You can change this any time in Settings.")
+        d2.setWordWrap(True); d2.setAlignment(Qt.AlignCenter)
+        d2.setStyleSheet(f"font-size:13px; color:{M3['on_surface_variant']};")
+        s2l.addWidget(d2)
+        pick_btn = _PB("  Choose a different folder…")
+        pick_btn.setObjectName("tonalBtn")
+        pick_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:@secondary_container; color:@on_secondary_container; border-radius:20px; padding:12px 24px; font-weight:500; }
+            QPushButton:hover { background:@secondary_container_hover; }
+        """))
+        pick_btn.clicked.connect(lambda: (self._on_music_folder_pick()))
+        s2l.addWidget(pick_btn, alignment=Qt.AlignCenter)
+        s2l.addStretch()
+        stack.addWidget(s2)
+        # Slide 3: Tips
+        s3 = QWidget(); s3l = QVBoxLayout(s3); s3l.setContentsMargins(32, 32, 32, 16); s3l.setSpacing(12)
+        t3 = QLabel("Power tips"); t3.setStyleSheet(f"font-size:20px; font-weight:700; color:{M3['on_surface']};")
+        t3.setAlignment(Qt.AlignCenter); s3l.addWidget(t3)
+        tips = QLabel(
+            "🔁  A-B Loop — set A and B points to loop a section of the song\n\n"
+            "🔀  Shuffle / Repeat — use the universal controls in the player bar\n\n"
+            "💤  Sleep timer — fade out and pause after 15/30/60 min (look for the moon icon)\n\n"
+            "🎚  Crossfade — blend songs into each other (Settings → Crossfade)\n\n"
+            "📝  Lyrics — tap the lyrics button to see synced lyrics\n\n"
+            "🎧  Audio output — tap the speaker icon to pick any BT / wired device"
+        )
+        tips.setWordWrap(True)
+        tips.setStyleSheet(f"font-size:13px; color:{M3['on_surface_variant']}; line-height:1.6;")
+        s2l.setAlignment(tips, Qt.AlignTop)
+        s3l.addWidget(tips); s3l.addStretch()
+        stack.addWidget(s3)
+        # Bottom bar: progress + skip/next/done
+        bottom = QHBoxLayout(); bottom.setContentsMargins(32, 0, 32, 0); bottom.setSpacing(8)
+        skip_btn = _PB("Skip"); skip_btn.setStyleSheet(f"background:transparent; color:{M3['on_surface_variant']}; padding:8px 16px;")
+        bottom.addWidget(skip_btn)
+        bottom.addStretch()
+        prev_btn = _PB("← Back"); prev_btn.setEnabled(False)
+        prev_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:transparent; color:@on_surface_variant; padding:8px 16px; }
+            QPushButton:disabled { color:@outline; }
+        """))
+        bottom.addWidget(prev_btn)
+        next_btn = _PB("Next →")
+        next_btn.setStyleSheet(_m3ss("""
+            QPushButton { background:@primary; color:@on_primary; border-radius:20px; padding:10px 24px; font-weight:500; }
+            QPushButton:hover { background:@primary_hover; }
+        """))
+        bottom.addWidget(next_btn)
+        outer.addLayout(bottom)
+        # Navigation logic
+        def update_nav():
+            idx = stack.currentIndex()
+            prev_btn.setEnabled(idx > 0)
+            next_btn.setText("Done" if idx == 2 else "Next →")
+        update_nav()
+        def next_slide():
+            if stack.currentIndex() < 2:
+                stack.setCurrentIndex(stack.currentIndex() + 1)
+                update_nav()
+            else:
+                self.cfg["onboarded_v20"] = True; save_cfg(self.cfg)
+                dlg.accept()
+        def prev_slide():
+            if stack.currentIndex() > 0:
+                stack.setCurrentIndex(stack.currentIndex() - 1)
+                update_nav()
+        next_btn.clicked.connect(next_slide)
+        prev_btn.clicked.connect(prev_slide)
+        skip_btn.clicked.connect(lambda: (self.cfg.__setitem__("onboarded_v20", True), save_cfg(self.cfg), dlg.accept()))
+        dlg.exec()
+
+    # ===== v20: Lyrics fetch + display =====
+    def _fetch_lyrics_async(self, track: dict):
+        """v20: Fetch lyrics in a background thread, emit signal when done."""
+        # Use QThread via the existing pattern (Downloader is already a QThread).
+        # For simplicity, use Python threading + QTimer to dispatch back to main thread.
+        import threading
+        def worker():
+            result = fetch_lyrics(track)
+            # Dispatch back to main thread via QTimer
+            QTimer.singleShot(0, lambda: self._on_lyrics_fetched(result))
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
+    def _on_lyrics_fetched(self, result):
+        """Called when lyrics fetch completes."""
+        self._current_lyrics = result
+        source = result.get("source", "none")
+        line_count = len(result.get("lines", []))
+        if source == "none":
+            self._show_toast("No lyrics found for this song")
+        else:
+            self._show_toast(f"Lyrics loaded ({source})")
+        # Update lyrics overlay if visible
+        if hasattr(self, "_lyrics_overlay") and self._lyrics_overlay.isVisible():
+            self._lyrics_overlay.set_lines(result.get("lines", []))
+
+    def _show_lyrics_overlay(self):
+        """v20: Show lyrics overlay (bottom sheet style)."""
+        if not hasattr(self, "_lyrics_overlay"):
+            from PySide6.QtWidgets import QDockWidget
+            self._lyrics_overlay = _LyricsOverlay(self)
+        lines = (self._current_lyrics or {}).get("lines", []) if hasattr(self, "_current_lyrics") else []
+        self._lyrics_overlay.set_lines(lines)
+        self._lyrics_overlay.show()
+
+    # ===== v20: Whimsy — Toast notifications =====
+    def _show_toast(self, message: str, duration_ms: int = 2500):
+        """v20: Show a brief toast notification at the bottom of the window."""
+        if not hasattr(self, "_toast_lbl"):
+            from PySide6.QtWidgets import QLabel as _QLBL
+            self._toast_lbl = _QLBL(self)
+            self._toast_lbl.setStyleSheet(_m3ss("""
+                QLabel { background:@inverse_surface; color:@inverse_on_surface;
+                         border-radius:20px; padding:10px 20px; font-size:13px; font-weight:500; }
+            """))
+            self._toast_lbl.setAlignment(Qt.AlignCenter)
+            self._toast_lbl.hide()
+        self._toast_lbl.setText(message)
+        self._toast_lbl.adjustSize()
+        # Position: bottom center of window
+        x = (self.width() - self._toast_lbl.width()) // 2
+        y = self.height() - self._toast_lbl.height() - 80
+        self._toast_lbl.move(x, y)
+        self._toast_lbl.show()
+        # Auto-hide
+        if hasattr(self, "_toast_timer") and self._toast_timer:
+            self._toast_timer.stop()
+        self._toast_timer = QTimer(self)
+        self._toast_timer.setSingleShot(True)
+        self._toast_timer.timeout.connect(self._toast_lbl.hide)
+        self._toast_timer.start(duration_ms)
 
     def _on_f5_refresh(self):
         """v16.7: context-aware F5 refresh.
@@ -4521,10 +5459,11 @@ class Win(QMainWindow):
         # v17.0: update the repeat info label in the player bar
         self._update_repeat_info()
         # v17.0: start the AnimatedNowPlaying + EQ animation
-        if hasattr(self, "now_playing_anim"):
-            self.now_playing_anim.set_playing(True)
         if hasattr(self, "eq_widget"):
             self.eq_widget.set_playing(True)
+        # v20: fetch lyrics for this song in background
+        self._current_lyrics = {"lines": [], "source": "none"}
+        self._fetch_lyrics_async(self.cur)
 
     def play_file(self,fp):
         fp=Path(fp)
@@ -4574,7 +5513,6 @@ class Win(QMainWindow):
     def stop(self):
         self.player.stop(); self.playing=False; self.pp.setIcon(self._pi); self.seek.setValue(0); self.mpris.update()
         # v17.0: stop animations
-        if hasattr(self, "now_playing_anim"): self.now_playing_anim.set_playing(False)
         if hasattr(self, "eq_widget"): self.eq_widget.set_playing(False)
     def next(self):
         # v17.0: record skip-forward
@@ -4661,10 +5599,25 @@ class Win(QMainWindow):
             import numpy as np
             self._np = np
             self._fft_window = np.hanning(2048)  # pre-compute Hann window
-            self._fft_bars_count = 48  # number of spectrum bars to output
+            self._fft_bars_count = 64  # v19: more bars for fuller look
             self._audio_buf_out = QAudioBufferOutput()
             self.player.setAudioBufferOutput(self._audio_buf_out)
             self._audio_buf_out.audioBufferReceived.connect(self._on_audio_buffer)
+            self._last_fft_time = 0  # v19: throttle FFT to avoid lag
+            # v19.1: CAVA-style autosens — track rolling peak for proper volume scaling
+            # Instead of normalizing to max (which makes even quiet sounds full-height),
+            # we use a rolling peak that adapts to the actual volume level.
+            self._sens_peak = 0.001  # rolling peak (starts low, grows with loud sounds)
+            self._sens_decay = 0.95  # peak decays 5% per frame (slowly adapts down)
+            self._sens_min = 0.0001  # floor to avoid div-by-zero
+            # v19.1: Per-bar smoothing (CAVA-style gravity falloff)
+            self._bar_prev = [0.0] * self._fft_bars_count  # previous frame values
+            self._bar_fall = [0.0] * self._fft_bars_count   # falloff velocity per bar
+            # v21: CAVA-STYLE MONSTERCAT SMOOTHING — spreads each bar's energy
+            # to its neighbors so the visualization looks like one continuous
+            # waveform instead of isolated bars. This is CAVA's signature look.
+            # See: https://github.com/karlstav/cava (smoothing[monstercat])
+            self._monstercat_factor = 1.5  # 0 = off, 1.5 = default (CAVA recommended)
             print("[Aurora][v17.5] QAudioBufferOutput initialized — live audio sync ACTIVE", flush=True)
         except Exception as e:
             print(f"[Aurora][v17.5] QAudioBufferOutput unavailable: {e} — falling back to pre-computed levels", flush=True)
@@ -4672,11 +5625,17 @@ class Win(QMainWindow):
             self._np = None
 
     def _on_audio_buffer(self, buf):
-        """v17.5: Receive a live audio buffer from QAudioBufferOutput.
-        Compute FFT → spectrum bars → feed to Visualizer.
-        This is called on the Qt main thread for every audio buffer (~20-40ms
-        depending on the audio format). numpy FFT on 2048 samples takes ~0.1ms."""
+        """v19: Receive a live audio buffer from QAudioBufferOutput.
+        v19 FIX: Throttle to max 10 FPS (100ms) to prevent lag.
+        The audio buffer callback fires ~30-50 times/sec which was causing
+        lag. We skip frames if less than 100ms since last FFT."""
         if not hasattr(self, '_np') or self._np is None: return
+        # v19: Throttle — only compute FFT every 100ms (10 FPS)
+        import time as _time
+        now = _time.monotonic()
+        if now - self._last_fft_time < 0.1:  # 100ms = 10 FPS
+            return
+        self._last_fft_time = now
         try:
             np = self._np
             # Get the raw audio data from the buffer
@@ -4723,12 +5682,77 @@ class Win(QMainWindow):
                 band = fft[lo:hi]
                 val = float(band.mean()) if len(band) > 0 else 0.0
                 bars.append(val)
-            # Normalize to 0.0-1.0
-            max_val = max(bars) if bars else 1.0
-            if max_val > 0:
-                bars = [min(1.0, b / max_val * 1.5) for b in bars]  # *1.5 for visual boost
+            # v19.1: CAVA-STYLE AUTOSENS — bars are proportional to ACTUAL volume
+            # The old code normalized to current max which made even
+            # quiet sounds show full-height bars. Now we use a rolling peak that
+            # represents the actual loudness level of the audio.
+            #
+            # How it works:
+            # 1. _sens_peak tracks the loudest bar seen recently (decays slowly)
+            # 2. Each bar is divided by _sens_peak (NOT by current max)
+            # 3. So quiet sections = small bars, loud sections = tall bars
+            # 4. Also apply CAVA-style gravity falloff so bars fall smoothly
+            raw_max = max(bars) if bars else 0.0
+            # Update rolling peak: grow instantly, decay slowly
+            if raw_max > self._sens_peak:
+                self._sens_peak = raw_max  # instantly jump up to new peak
             else:
-                bars = [0.0] * self._fft_bars_count
+                self._sens_peak *= self._sens_decay  # slowly decay (5% per frame)
+                if self._sens_peak < self._sens_min:
+                    self._sens_peak = self._sens_min
+            # Normalize by rolling peak (NOT current max) — quiet stays quiet
+            ref = max(self._sens_peak, self._sens_min)
+            normalized = [min(1.0, b / ref) for b in bars]
+            # v21: CAVA-STYLE MONSTERCAT SMOOTHING — spreads each bar's energy
+            # to neighbors so the visualization looks like a continuous waveform
+            # instead of isolated bars. Algorithm from CAVA's cavacore:
+            #   for each bar i, add factor^(distance) * height to neighbors.
+            # See: https://github.com/karlstav/cava/blob/master/cavacore/cavacore.c
+            if self._monstercat_factor > 0:
+                n = len(normalized)
+                smoothed_mc = list(normalized)  # copy
+                for i in range(n):
+                    h = normalized[i]
+                    if h <= 0: continue
+                    # Spread to left neighbors
+                    j = i - 1
+                    while j >= 0:
+                        spread = h * (self._monstercat_factor / (i - j)) ** 2
+                        if spread < 0.01: break  # cutoff when contribution is tiny
+                        if spread > smoothed_mc[j]:
+                            smoothed_mc[j] = spread
+                        j -= 1
+                    # Spread to right neighbors
+                    j = i + 1
+                    while j < n:
+                        spread = h * (self._monstercat_factor / (j - i)) ** 2
+                        if spread < 0.01: break
+                        if spread > smoothed_mc[j]:
+                            smoothed_mc[j] = spread
+                        j += 1
+                normalized = smoothed_mc
+            # v19.1: CAVA-style gravity falloff — bars fall smoothly, not instantly
+            # When new value < previous, fall with acceleration (gravity)
+            # When new value > previous, jump up instantly
+            smoothed = []
+            gravity = 0.08  # falloff acceleration per frame
+            for i, v in enumerate(normalized):
+                prev = self._bar_prev[i] if i < len(self._bar_prev) else 0.0
+                if v < prev:
+                    # Falling — apply gravity (accelerating downward)
+                    fall_vel = self._bar_fall[i] if i < len(self._bar_fall) else 0.0
+                    new_val = prev - fall_vel
+                    if new_val < v: new_val = v  # don't fall below actual value
+                    if new_val < 0: new_val = 0
+                    self._bar_fall[i] = fall_vel + gravity  # accelerate
+                else:
+                    # Rising — jump up instantly, reset fall velocity
+                    new_val = v
+                    self._bar_fall[i] = 0.0
+                smoothed.append(new_val)
+                if i < len(self._bar_prev):
+                    self._bar_prev[i] = new_val
+            bars = smoothed
             # Feed to Visualizer
             if hasattr(self, 'viz'):
                 self.viz.set_spectrum(bars)
@@ -4743,8 +5767,6 @@ class Win(QMainWindow):
         (self.eq_timer.start() if self.playing else self.eq_timer.stop())
         if not self.playing: self._eq_tick()  # one last repaint to freeze the badge
         # v17.0: AnimatedNowPlaying + Equalizer animation follow playback state
-        if hasattr(self, "now_playing_anim"):
-            self.now_playing_anim.set_playing(self.playing)
         if hasattr(self, "eq_widget"):
             self.eq_widget.set_playing(self.playing)
         self._write_status()
@@ -4814,28 +5836,40 @@ class Win(QMainWindow):
         if self._ab_looping and self._ab_a is not None and self._ab_b is not None:
             if p >= self._ab_b:
                 self.player.setPosition(self._ab_a)
+        # v20: lyrics auto-scroll — highlight active line if overlay visible
+        if hasattr(self, "_lyrics_overlay") and self._lyrics_overlay.isVisible():
+            try: self._lyrics_overlay.highlight_at_time(int(p))
+            except Exception: pass
     def _ab_set(self, point):
-        """v17.5: Set A or B loop point at the current playback position."""
+        """v17.6: Set A or B loop point at the current playback position.
+        Updates the status label to show timestamps + LOOPING indicator."""
         pos = self.player.position()
         if point == "A":
             self._ab_a = pos
             self.ab_a_btn.setChecked(True)
-            self.ab_a_btn.setText(f" A\n{fmt_time(pos/1000)}")
+            self.ab_a_btn.setText(f"A {fmt_time(pos/1000)}")
             print(f"[Aurora][A-B] A set at {pos}ms ({fmt_time(pos/1000)})", flush=True)
         elif point == "B":
             self._ab_b = pos
             self.ab_b_btn.setChecked(True)
-            self.ab_b_btn.setText(f" B\n{fmt_time(pos/1000)}")
+            self.ab_b_btn.setText(f"B {fmt_time(pos/1000)}")
             print(f"[Aurora][A-B] B set at {pos}ms ({fmt_time(pos/1000)})", flush=True)
         # If both A and B are set, enable looping
         if self._ab_a is not None and self._ab_b is not None and self._ab_b > self._ab_a:
             self._ab_looping = True
+            self.ab_status.setText(f"LOOPING {fmt_time(self._ab_a/1000)} → {fmt_time(self._ab_b/1000)}")
+            self.ab_status.setStyleSheet(f"font-size:10px; color:{M3['primary']}; padding:0 4px; background:transparent; font-weight:600;")
             print(f"[Aurora][A-B] Loop active: {fmt_time(self._ab_a/1000)} → {fmt_time(self._ab_b/1000)}", flush=True)
+        elif self._ab_a is not None and self._ab_b is None:
+            self.ab_status.setText(f"A={fmt_time(self._ab_a/1000)}, waiting for B...")
+            self.ab_status.setStyleSheet(f"font-size:10px; color:{M3['outline']}; padding:0 4px; background:transparent;")
     def _ab_clear(self):
-        """v17.5: Clear A-B loop points."""
+        """v17.6: Clear A-B loop points + reset status label."""
         self._ab_a = None; self._ab_b = None; self._ab_looping = False
         self.ab_a_btn.setChecked(False); self.ab_b_btn.setChecked(False)
-        self.ab_a_btn.setText(" A"); self.ab_b_btn.setText(" B")
+        self.ab_a_btn.setText("A"); self.ab_b_btn.setText("B")
+        self.ab_status.setText("")
+        self.ab_status.setStyleSheet(f"font-size:10px; color:{M3['outline']}; padding:0 4px; background:transparent;")
         print("[Aurora][A-B] Loop cleared", flush=True)
     def _dur(self,d): self.seek.setRange(0,int(d)); self.tt.setText(fmt_time(d/1000))
     def _status(self,s):
@@ -5090,6 +6124,40 @@ class Win(QMainWindow):
             self._hue_timer=QTimer(self); self._hue_timer.setSingleShot(True)
             self._hue_timer.setInterval(120); self._hue_timer.timeout.connect(self._apply_hue)
         self._hue_timer.start()
+    def _on_theme_changed(self):
+        """v18: Theme selector changed — apply the new theme instantly."""
+        theme_id = self.theme_combo.currentIndex()
+        self.cfg["theme_id"] = theme_id; save_cfg(self.cfg)
+        apply_theme(theme_id)
+        app = QApplication.instance()
+        if app: app.setStyleSheet(build_ss())
+        # Re-tint all icons + sidebar title with new palette
+        try:
+            self._pi=_svg(IC_PLAY,M3["on_primary_container"]); self._ai=_svg(IC_PAUSE,M3["on_primary_container"])
+            self.pp.setIcon(self._ai if self.playing else self._pi)
+            for b,ic in [(self.sh,IC_SHUFFLE),(self.pb_btn,IC_PREV),(self.nx,IC_NEXT),
+                         (self.rp,IC_REPEAT1 if self.repeat==RepeatMode.ONE else IC_REPEAT)]:
+                b.setIcon(_svg(ic))
+            self.vol_btn.setIcon(_svg(IC_MUTE if self.audio.isMuted() else IC_VOL))
+            self.dev_btn.setIcon(_svg(IC_AUDIO_DEVICE))
+            self.browse_btn.setIcon(_svg(IC_BROWSE, M3["on_primary_container"]))
+            for k in self.navs:
+                ic_map = {"library":IC_LIST, "browse":IC_BROWSE, "history":IC_HISTORY,
+                          "equalizer":IC_EQUALIZER, "playlists":IC_LIST, "queue":IC_LIST,
+                          "settings":IC_SETTINGS}
+                self.navs[k].setIcon(_svg(ic_map.get(k, IC_LIST), M3["on_surface_variant"]))
+            self._sidebar_title.setStyleSheet(f"font-size:22px;font-weight:500;color:{M3['primary']};padding:24px 20px 4px;background:transparent;")
+        except Exception as e:
+            print(f"[Aurora][v18] theme icon refresh: {e}", flush=True)
+        self.backdrop.update()
+        self.viz.update()
+        print(f"[Aurora][v18] Theme changed to: {THEME_NAMES[theme_id]}", flush=True)
+
+    def _set_theme_by_index(self, idx: int):
+        """v21: Set theme directly from clickable preview card."""
+        if 0 <= idx < len(THEME_NAMES):
+            self.theme_combo.setCurrentIndex(idx)  # triggers _on_theme_changed
+
     def _update_hue_chip(self):
         if hasattr(self,'hue_chip'):
             h=self.hue_slider.value()
@@ -5549,6 +6617,74 @@ def _print_helper_command():
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)
 
+# ===== v20: Lyrics overlay widget =====
+class _LyricsOverlay(QWidget):
+    """v20: Floating lyrics panel. Auto-scrolls to active line.
+    Active line is highlighted in primary color, scaled 1.05x."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        self.setMinimumWidth(420); self.setMinimumHeight(420)
+        self.setStyleSheet(f"background:{M3.get('surface', '#1D1B20')}; color:{M3.get('on_surface', '#E6E0E9')};")
+        lay = QVBoxLayout(self); lay.setContentsMargins(24, 24, 24, 16); lay.setSpacing(8)
+        # Header
+        hdr = QHBoxLayout()
+        title = QLabel("📝 Lyrics"); title.setStyleSheet(f"font-size:18px; font-weight:700; color:{M3.get('on_surface', '#E6E0E9')};")
+        hdr.addWidget(title); hdr.addStretch()
+        close_btn = QPushButton("✕"); close_btn.setFixedSize(32, 32)
+        close_btn.setStyleSheet(f"background:transparent; color:{M3.get('on_surface_variant', '#CAC4D0')}; font-size:16px; border:none;")
+        close_btn.clicked.connect(self.hide)
+        hdr.addWidget(close_btn)
+        lay.addLayout(hdr)
+        # Lyrics list
+        self.list = QListWidget()
+        self.list.setStyleSheet(f"background:transparent; border:none; color:{M3.get('on_surface_variant', '#CAC4D0')}; font-size:15px;")
+        self.list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        lay.addWidget(self.list, stretch=1)
+        # Footer
+        self.source_lbl = QLabel("")
+        self.source_lbl.setStyleSheet(f"font-size:11px; color:{M3.get('outline', '#79747E')};")
+        lay.addWidget(self.source_lbl)
+        self._lines = []
+    def set_lines(self, lines):
+        """lines: list of (time_ms, text) tuples."""
+        self._lines = lines or []
+        self.list.clear()
+        for t, txt in self._lines:
+            item = QListWidgetItem(txt)
+            item.setTextAlignment(Qt.AlignCenter)
+            self.list.addItem(item)
+        if not self._lines:
+            self.list.addItem(QListWidgetItem("No lyrics for this song."))
+            self.source_lbl.setText("")
+        else:
+            self.source_lbl.setText(f"{len(self._lines)} lines")
+    def highlight_at_time(self, position_ms: int):
+        """Highlight the active lyric line for the given playback position."""
+        if not self._lines:
+            return
+        # Find last line whose time_ms <= position_ms
+        active_idx = -1
+        for i, (t, _) in enumerate(self._lines):
+            if t <= position_ms:
+                active_idx = i
+            else:
+                break
+        if active_idx < 0:
+            return
+        # Reset all items to default style
+        for i in range(self.list.count()):
+            it = self.list.item(i)
+            it.setForeground(QColor(M3.get('on_surface_variant', '#CAC4D0')))
+            f = it.font(); f.setBold(False); f.setPointSize(15); it.setFont(f)
+        # Highlight active
+        if active_idx < self.list.count():
+            it = self.list.item(active_idx)
+            it.setForeground(QColor(M3.get('primary', '#6750A4')))
+            f = it.font(); f.setBold(True); f.setPointSize(17); it.setFont(f)
+            self.list.scrollToItem(it, QListWidget.PositionAtCenter)
+
 # ===== Main =====
 def main():
     args=sys.argv[1:]
@@ -5757,7 +6893,7 @@ v16.8: /helper command (alias --helper) prints ALL commands grouped by category.
 
   playerctl --player=aurora play/pause/play-pause/stop/next/previous
 
-Music: {MUSIC_FOLDER} (auto-scanned)
+Music: {MUSIC_FOLDER()} (auto-scanned)
 Config: {CONFIG_FILE}"""); return
     # v12.2: enforce the single-instance lock for plain GUI launches too.
     # Previously a second 'aurora-player' clobbered the PID file, and the two
@@ -5765,8 +6901,13 @@ Config: {CONFIG_FILE}"""); return
     if is_running() and not args:
         print("[Aurora] Already running."); return
     PID_FILE.write_text(str(os.getpid()))
-    # v15: apply the saved theme hue BEFORE any widget/stylesheet is built
-    apply_theme_hue(load_cfg().get("theme_hue",DEFAULT_HUE))
+    # v18: apply the saved theme (NEW) or hue (existing) BEFORE any widget/stylesheet is built
+    cfg = load_cfg()
+    theme_id = cfg.get("theme_id", THEME_DEFAULT)
+    if theme_id > 0:
+        apply_theme(theme_id)  # v18: new theme system
+    else:
+        apply_theme_hue(cfg.get("theme_hue", DEFAULT_HUE))  # existing hue slider
     app=QApplication(sys.argv); app.setApplicationName(APP_NAME); app.setApplicationVersion(APP_VERSION); app.setStyleSheet(build_ss())
     w=Win(); w.show()
     if args and args[0]=="--play-file" and len(args)>=2:

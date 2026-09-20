@@ -6,8 +6,8 @@ INST="$HOME/.local/share/aurora-player"
 WRAP="$HOME/.local/bin/aurora-player"
 DESK="$HOME/.local/share/applications/aurora-player.desktop"
 
-# v17.5 version (kept in sync with APP_VERSION in aurora_player.py)
-AURORA_VERSION="17.5.0"
+# v19.1 version (kept in sync with APP_VERSION in aurora_player.py)
+AURORA_VERSION="19.1.0"
 
 echo "[Aurora] Installing v${AURORA_VERSION}..."
 

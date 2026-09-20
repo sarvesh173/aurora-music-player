@@ -1,7 +1,7 @@
-# Aurora Music Player v17.5.0
+# Aurora Music Player v21.0.0
 
 > **A custom-built, native Linux music player written in Python + PySide6 (Qt 6).**  
-> Material 3 design, MPRIS/playerctl support, agent-friendly CLI, online Browse with full-track downloads, infinite scroll, and a 6-strategy YouTube bot-protection bypass.
+> Material 3 design, Monstercat visualizer smoothing, MPRIS/playerctl support, agent-friendly CLI & IPC, online Browse with full-track downloads, infinite scroll, and a 6-strategy YouTube bot-protection bypass.
 
 <p align="center">
   <img src="aurora-player/banner.png" alt="Aurora Music Player banner" width="800">
@@ -11,7 +11,7 @@
 
 ## 🎯 What is Aurora?
 
-Aurora Music Player is a **from-scratch, single-file Python application** (`aurora_player.py` — ~330 KB, ~5,800 lines) built with:
+Aurora Music Player is a **from-scratch, single-file Python application** (`aurora_player.py` — ~386 KB, ~6,500 lines) built with:
 
 - **PySide6 (Qt 6)** — native widgets, no Electron, no web runtime
 - **Qt Multimedia** — hardware-accelerated playback
@@ -29,16 +29,16 @@ Aurora Music Player is a **from-scratch, single-file Python application** (`auro
 | Category | Features |
 |----------|----------|
 | **Playback** | Play/pause/stop/next/prev, seek, volume, shuffle, repeat (off/all/one), gapless-ish track switching (120 ms volume ramp) |
-| **Library** | Auto-scans `~/Downloads/` every 30 s (F5 to force), supports MP3/M4A/FLAC/OGG/WAV/OPUS/AAC/WMA, live search + multi-column sort |
+| **Library** | Auto-scans music folders dynamically, supports MP3/M4A/FLAC/OGG/WAV/OPUS/AAC/WMA, live search + multi-column sort |
 | **Playlists** | Create/rename/delete, drag-reorder, multi-select "Add to playlist" from library, right-click context menu, persists to `~/.aurora-player/playlists.json` |
 | **Queue** | Add to end / play next, remove (Del/right-click), move up/down, clear, save as playlist, double-click to jump-play, now-playing highlight follows auto-advance |
 | **Browse (Online)** | iTunes Search API (8 storefronts: US/IN/GB/CA/AU/DE/FR/JP), live auto-suggestions (250 ms debounce), infinite scroll (200 result cap), country-specific seed queries |
 | **Downloads** | Full-track MP3 (~190 kbps VBR) via yt-dlp + ffmpeg, iTunes metadata + 600×600 cover art embedded (mutagen APIC), serialized queue, idempotent (skips existing) |
 | **YouTube Bot Bypass** | **6 strategies in sequence:** (1) `cookies-from-browser` (auto-detect Firefox/Chrome/Brave/Edge/Opera/Safari/Vivaldi/Whale) · (2) `cookies.txt` (Netscape format) · (3) Client rotation (`ios,android,tv,web,web_safari`) · (4) Invidious API (3 instances) · (5) SAPISIDHASH Innertube direct `/youtubei/v1/player` with 5-client rotation · (6) Plain yt-dlp (last resort) |
 | **Theme Studio** | Hue slider (0–359) → full Material 3 dark palette regenerates live (all surfaces, buttons, sliders, icons, beat graph). Default seed: `#6366F1` (Aurora indigo) |
-| **Beat Graph** | SoundCloud-style waveform from **real per-track peak levels** (async `QAudioDecoder`), bars bounce at playhead, travelling shimmer wave, pulsing playhead dot, click/drag to seek, 30 fps while playing only |
+| **Beat Graph** | Monstercat-smoothed SoundCloud-style waveform from **real per-track peak levels** (async `QAudioDecoder`), bars bounce at playhead, travelling shimmer wave, pulsing playhead dot, click/drag to seek |
 | **MPRIS / playerctl** | `play`, `pause`, `play-pause`, `stop`, `next`, `previous`, `seek`, `volume`, `shuffle`, `loop` — all marshalled to Qt main thread |
-| **CLI (Agent-Friendly)** | `--status` (rich JSON), `--play-file`, `--toggle`, `--play/--pause/--stop/--next/--prev`, queue/playlist/theme commands, headless Browse search (`--browse-itunes`) |
+| **CLI & IPC** | `--status` (rich JSON), `--play-file`, `--toggle`, `--play/--pause/--stop/--next/--prev`, queue/playlist/theme commands, headless Browse search (`--browse-itunes`) |
 | **System Tray** | Show/hide, play/pause, next, prev, quit — native Qt tray icon |
 | **Keyboard Shortcuts** | Space (play/pause), ←/→ (seek ±5 s), ↑/↓ (volume ±5%), F5 (rescan), Ctrl+F (focus search), Escape (clear search/close dialogs) |
 | **Window State** | Geometry + maximized state persisted to `~/.aurora-player/window_state.json` |
@@ -51,8 +51,8 @@ Aurora Music Player is a **from-scratch, single-file Python application** (`auro
 ### Option 1: Install `.deb` (Debian / Ubuntu / Kali / Mint / Pop!_OS)
 
 ```bash
-# Download the release ZIP, unzip, then:
-sudo apt install ./packages/aurora-music_17.5.0_all.deb
+# Download the release package, then:
+sudo apt install ./packages/aurora-music_21.0.0_all.deb
 aurora-music          # or find "Aurora Music" in your app menu
 ```
 
@@ -64,14 +64,14 @@ aurora-music          # or find "Aurora Music" in your app menu
 
 ```bash
 # 1. Unzip the release
-unzip aurora-music-v17.5-complete.zip -d ~/aurora-music
+unzip aurora-music-21.0.0-source.zip -d ~/aurora-music
 cd ~/aurora-music/aurora-player
 
 # 2. Install dependencies (uses --break-system-packages on PEP 668 systems)
 bash install.sh
 
 # 3. Run
-aurora-player --version   # → Aurora Music Player v17.5.0
+aurora-player --version   # → Aurora Music Player v21.0.0
 aurora-player             # launches the GUI
 ```
 
@@ -277,9 +277,9 @@ Aurora is designed to be **driven by AI agents** (Claude Code, Codex, Hermes, et
 ## 📁 Project Structure
 
 ```
-aurora-music-v17.5/
+aurora-music-21.0.0/
 ├── aurora-player/
-│   ├── aurora_player.py        # Main application (~5,800 lines, single file)
+│   ├── aurora_player.py        # Main application (~6,500 lines, single file)
 │   ├── install.sh              # User-space installer (~/.local/)
 │   ├── requirements.txt        # PySide6, mpris_server, mutagen
 │   ├── app-icon.png            # 1024×1024
@@ -299,7 +299,7 @@ aurora-music-v17.5/
 │   ├── aurora-music.spec       # Fedora/RPM spec
 │   └── com.aurora.Music.json   # Flatpak manifest
 ├── packages/
-│   └── aurora-music_17.5.0_all.deb   # Pre-built .deb
+│   └── aurora-music_21.0.0_all.deb   # Pre-built .deb
 ├── README.md                   # This file
 ├── INSTALL.md                  # Installation guide
 └── screenshots/                # UI screenshots (see below)
@@ -324,7 +324,7 @@ aurora-music-v17.5/
 ### Debian / Ubuntu / Kali (.deb)
 ```bash
 bash packaging/build_deb.sh
-# Output: packages/aurora-music_17.5.0_all.deb
+# Output: packages/aurora-music_21.0.0_all.deb
 ```
 
 ### AppImage (portable)
@@ -400,6 +400,10 @@ rpmbuild -ba linux-packages/aurora-music.spec
 
 | Version | Highlights |
 |---------|------------|
+| **v21.0.0** | **Massive UI Overhaul & Smoothing:** Monstercat visualizer smoothing, refined vector SVG icon system, eliminated button scaling jitter/layout drift, refreshed About dialog, and deep M3 theme polish. |
+| **v20.0** | **IPC & Daemon Architecture:** Unix socket IPC + DBus integration for background control and instant CLI marshalling. |
+| **v19.2** | **Dynamic Library:** User-configurable music directory (`MUSIC_FOLDER`), faster library indexing and tag parsing. |
+| **v18.0** | **Low-Spec Optimization:** Celeron N4020 / 4GB RAM CPU-tuning, reduced audio decode memory footprint. |
 | **v17.5** | SAPISIDHASH Innertube (strategy 5), 5-client rotation, country-specific seeds, `.deb` postinst installs yt-dlp/mpris_server |
 | **v17.4** | Beat graph polish, settings persistence fixes |
 | **v17.3** | Equalizer page, animated buttons |

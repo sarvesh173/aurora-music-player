@@ -1,11 +1,11 @@
-# Aurora Music Player v17.5 — Install Guide
+# Aurora Music Player v18.0 — Install Guide
 
 ## ⚡ Easiest: install the .deb (Kali / Debian / Ubuntu)
 
 A ready-built package ships in the `packages/` folder:
 
 ```bash
-sudo apt install ./packages/aurora-music_17.5.0_all.deb
+sudo apt install ./packages/aurora-music_19.1.0_all.deb
 aurora-music        # or find "Aurora Music" in your app menu
 ```
 
@@ -23,7 +23,7 @@ Arch — any Linux with Python 3.9+ and a desktop session.
 ## 1. Quick install (recommended)
 
 ```bash
-unzip aurora-music-v17.5-complete.zip -d ~/aurora-music
+unzip aurora-music-v19.1-complete.zip -d ~/aurora-music
 cd ~/aurora-music/aurora-player
 bash install.sh
 ```
@@ -37,7 +37,7 @@ What it does:
 Verify:
 
 ```bash
-aurora-player --version     # → 17.5.0
+aurora-player --version     # → 19.1.0
 aurora-player               # launches the Material 3 UI
 ```
 
@@ -90,7 +90,7 @@ playerctl --player=aurora play  # MPRIS (needs playerctl)
 ## 6. Upgrading from v12.2
 
 Just re-run `bash install.sh` — it overwrites the installed player.
-Settings and playlists in `~/.aurora-player/` are preserved. v17.5 is a
+Settings and playlists in `~/.aurora-player/` are preserved. v19.1 is a
 pure UI upgrade (Material 3); no behavior or IPC changes.
 
 ## 7. Uninstall
