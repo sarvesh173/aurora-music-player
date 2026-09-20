@@ -1,5 +1,5 @@
 PySide6>=6.5.0
-mpris_server>=0.1.0
+mpris_server==0.9.6
 mutagen>=1.47.0
 # v16.5: yt-dlp + ffmpeg required for Browse full-track downloads
 yt-dlp>=2024.0.0
