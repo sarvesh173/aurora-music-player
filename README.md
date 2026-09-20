@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/00_overview.png" alt="Aurora Music Player v21 Overview" width="900" style="border-radius: 8px;">
+  <img src="screenshots/02_library_animated_buttons.png" alt="Aurora Music Player v21 Overview" width="900" style="border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
 </p>
 
 ---
@@ -376,15 +376,11 @@ aurora-music-21.0.0/
 
 ---
 
-## 🖼️ Screenshots
+## 🖼️ Application Gallery
 
-| Overview | Library | Browse (India) | Equalizer |
-|----------|---------|----------------|-----------|
-| ![](screenshots/00_overview.png) | ![](screenshots/01_library.png) | ![](screenshots/03_browse_bollywood.png) | ![](screenshots/01_equalizer_page.png) |
-
-| Settings (Hue Slider) | History | Browse Preview Playing |
-|-----------------------|---------|------------------------|
-| ![](screenshots/02_settings_hue_slider.png) | ![](screenshots/01_history_with_stats.png) | ![](screenshots/02_browse_preview_playing.png) |
+| Main Player & Library View | Settings & Real-time Visualizer | 10-Band Equalizer Studio |
+|:---:|:---:|:---:|
+| <img src="screenshots/02_library_animated_buttons.png" width="280" alt="Aurora Library View"> | <img src="screenshots/01_settings_visualizer.png" width="280" alt="Aurora Settings & Visualizer"> | <img src="screenshots/03_equalizer.png" width="280" alt="Aurora Equalizer Studio"> |
 
 ---
 
