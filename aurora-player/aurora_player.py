@@ -252,6 +252,18 @@ EQ_PRESETS = {
     "Loudness":    [6, 4, 0, 0, -2, 0, 0, 2, 4, 6],
 }
 
+def atomic_write_json(filepath, data, indent=2):
+    """Safely write data to JSON file atomically to prevent corruption on crash."""
+    try:
+        path = Path(filepath)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+        tmp_path.replace(path)
+    except Exception as e:
+        print(f"[Aurora] atomic_write_json failed for {filepath}: {e}", flush=True)
+
 SUPPORTED = {".mp3", ".m4a", ".flac", ".ogg", ".wav", ".opus", ".aac", ".wma"}
 
 # ===== v17.3: Visualizer modes (inspired by CAVA + Kurve) =====
@@ -276,8 +288,7 @@ def load_viz_config():
 
 def save_viz_config(cfg):
     """v17.3: Save visualizer config."""
-    try: VIZ_FILE.write_text(json.dumps(cfg, indent=2))
-    except Exception: pass
+    atomic_write_json(VIZ_FILE, cfg)
 
 # ===== Material 3 Design Tokens (v12.3) =====
 # Material 3 color roles — dark scheme generated from seed #6366F1 (Aurora indigo).
@@ -1872,12 +1883,12 @@ def _save_lyrics_cache(cache_file, lines, source, ttl=LYRICS_CACHE_TTL_SECONDS):
     try:
         import json as _json, time as _time
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        cache_file.write_text(_json.dumps({
+        atomic_write_json(cache_file, {
             "lines": lines,
             "source": source,
             "fetched_at": _time.time(),
             "ttl": ttl,
-        }))
+        })
     except Exception as e:
         print(f"[Aurora][Lyrics] cache save failed: {e}", flush=True)
 
@@ -1894,8 +1905,7 @@ def load_cfg():
     return d
 
 def save_cfg(c):
-    try: CONFIG_FILE.write_text(json.dumps(c,indent=2))
-    except: pass
+    atomic_write_json(CONFIG_FILE, c)
 
 def load_pl():
     if PLAYLISTS_FILE.exists():
@@ -1904,8 +1914,7 @@ def load_pl():
     return {}
 
 def save_pl(p):
-    try: PLAYLISTS_FILE.write_text(json.dumps(p,indent=2))
-    except: pass
+    atomic_write_json(PLAYLISTS_FILE, p)
 
 # ===== v16.8: History persistence =====
 # History stores the last 100 played songs with metadata:
@@ -1940,8 +1949,7 @@ def load_history():
     return default
 
 def save_history(h):
-    try: HISTORY_FILE.write_text(json.dumps(h, indent=2))
-    except Exception as e: print(f"[Aurora][History] save failed: {e}", flush=True)
+    atomic_write_json(HISTORY_FILE, h)
 
 def record_play(title, artist, path, duration_sec=0):
     """v16.8: Record that a song was played. Called from play_idx/play_file.
@@ -2010,8 +2018,7 @@ def load_session():
     return default
 
 def save_session(s):
-    try: SESSION_FILE.write_text(json.dumps(s, indent=2))
-    except Exception as e: print(f"[Aurora][Session] save failed: {e}", flush=True)
+    atomic_write_json(SESSION_FILE, s)
 
 def fmt_duration(seconds):
     """v16.8: Format seconds into human-readable duration.
@@ -2056,8 +2063,7 @@ def load_equalizer():
 
 def save_equalizer(eq):
     """v17.0: Save EQ config to EQUALIZER_FILE."""
-    try: EQUALIZER_FILE.write_text(json.dumps(eq, indent=2))
-    except Exception as e: print(f"[Aurora][EQ] save failed: {e}", flush=True)
+    atomic_write_json(EQUALIZER_FILE, eq)
 
 # ===== v17.0: Repeat/skip stats persistence =====
 # Tracks per-song repeat count + global skip-forward/skip-backward counts.
@@ -2088,8 +2094,7 @@ def load_repeat_stats():
 
 def save_repeat_stats(rs):
     """v17.0: Save repeat/skip stats to REPEAT_STATS_FILE."""
-    try: REPEAT_STATS_FILE.write_text(json.dumps(rs, indent=2))
-    except Exception as e: print(f"[Aurora][RepeatStats] save failed: {e}", flush=True)
+    atomic_write_json(REPEAT_STATS_FILE, rs)
 
 def record_repeat(path, title=""):
     """v17.0: Record that a song was repeated (played again). Increments the
@@ -2188,14 +2193,31 @@ class BrowseTrack:
         return bt
 
 def _itunes_get(url, params, timeout=12):
-    """Synchronous urllib GET to iTunes API. Returns parsed JSON dict or {}."""
+    """Synchronous urllib GET to iTunes API with robust error handling and timeout guard.
+    Returns parsed JSON dict or {} on any HTTP/JSON failure."""
+    if not url or not isinstance(params, dict):
+        return {}
     try:
-        full = url + "?" + urlencode(params)
-        req = _urlreq.Request(full, headers={"User-Agent": "Aurora-Music/16.0 (+https://aurora.local)"})
+        query_str = urlencode({k: v for k, v in params.items() if v is not None})
+        full = f"{url}?{query_str}" if query_str else url
+        req = _urlreq.Request(
+            full,
+            headers={
+                "User-Agent": "Aurora-Music/21.0 (+https://aurora.local)",
+                "Accept": "application/json",
+                "Connection": "close"
+            }
+        )
         with _urlreq.urlopen(req, timeout=timeout) as r:
-            data = r.read().decode("utf-8", "replace")
-        return json.loads(data) if data else {}
-    except (_urlerr.URLError, _urlerr.HTTPError, json.JSONDecodeError, TimeoutError, OSError) as e:
+            if getattr(r, "status", 200) not in (200, 206):
+                print(f"[Aurora][Browse] iTunes GET non-200 status: {getattr(r, 'status', None)}", flush=True)
+                return {}
+            raw_bytes = r.read()
+            if not raw_bytes:
+                return {}
+            data = raw_bytes.decode("utf-8", "replace")
+            return json.loads(data)
+    except Exception as e:
         print(f"[Aurora][Browse] iTunes GET failed: {e}", flush=True)
         return {}
 
@@ -3956,7 +3978,7 @@ class Win(QMainWindow):
         self.browse_progress.setVisible(False)
         track_title = ""
         for t in self._browse_results:
-            if t.track_id == track_id: track_title = t.title; break
+            if str(t.track_id) == str(track_id): track_title = t.title; break
         if ok:
             # v16.6: extract strategy name from error field ("strategy:<name>")
             strategy_note = ""
@@ -4001,10 +4023,11 @@ class Win(QMainWindow):
     def _find_card(self, track_id):
         """Find a BrowseResultCard widget by track_id (linear scan of grid)."""
         grid = self.browse_grid
+        tid_str = str(track_id)
         for i in range(grid.count()):
             it = grid.itemAt(i)
             w = it.widget() if it else None
-            if w and hasattr(w, "track") and w.track.track_id == track_id:
+            if w and hasattr(w, "track") and str(getattr(w.track, "track_id", "")) == tid_str:
                 return w
         return None
 
@@ -5548,7 +5571,9 @@ class Win(QMainWindow):
                 self.queue.append(self._resolve(arg)); self._refq()
             elif cmd=="queue-next-file":
                 self.queue.insert(min(self.qidx+1,len(self.queue)),self._resolve(arg)); self._refq()
-            elif cmd=="queue-remove": self.q_remove(int(arg)-1)  # 1-based for humans/agents
+            elif cmd=="queue-remove":
+                try: self.q_remove(int(arg)-1)  # 1-based for humans/agents
+                except (ValueError, TypeError) as e: print(f"[Aurora] Invalid queue index '{arg}': {e}", flush=True)
             elif cmd=="queue-clear": self._q_clear()
             elif cmd=="new-playlist": self._newpl(arg)
             elif cmd=="add-to-playlist":
@@ -5582,7 +5607,7 @@ class Win(QMainWindow):
                 # Uses yt-dlp + ffmpeg (NOT the 30-sec iTunes preview).
                 tid = arg.strip()
                 for t in (self._browse_results or []):
-                    if t.track_id == tid:
+                    if str(t.track_id) == str(tid):
                         self._browse_download(t); break
                 else:
                     print(f"[Aurora] browse-download: trackId '{tid}' not in current results", flush=True)
@@ -6087,10 +6112,12 @@ class Win(QMainWindow):
     def q_remove(self,i):
         """v15: THE missing 'remove from queue'. Keeps qidx pointing at the
         same now-playing entry."""
+        try: i = int(i)
+        except (ValueError, TypeError): return
         if not (0<=i<len(self.queue)): return
         self.queue.pop(i)
         if i<self.qidx: self.qidx-=1
-        elif i==self.qidx: self.qidx=min(self.qidx,len(self.queue)-1)
+        elif i==self.qidx: self.qidx=min(self.qidx, max(0, len(self.queue)-1))
         self.qidx=max(0,self.qidx)
         self._refq()
     def _q_remove_sel(self):
@@ -6255,31 +6282,35 @@ class Win(QMainWindow):
         f=CONFIG_DIR/"cmd.txt"
         if f.exists():
             try:
-                args=f.read_text().strip().split("\n"); f.unlink()
-                if args and args[0]:
-                    print(f"[Aurora] IPC received: {args[0]}", flush=True)
-                    if args[0]=="--play-file" and len(args)>=2: self._on_remote_cmd("play-file",args[1])
-                    elif args[0]=="--play": self._on_remote_cmd("play","")
-                    elif args[0]=="--pause": self._on_remote_cmd("pause","")
-                    elif args[0]=="--toggle": self._on_remote_cmd("toggle","")
-                    elif args[0]=="--next": self._on_remote_cmd("next","")
-                    elif args[0] in ("--prev","--previous"): self._on_remote_cmd("prev","")
-                    elif args[0]=="--stop": self._on_remote_cmd("stop","")
-                    # v15: queue / playlist / theme over IPC
-                    elif args[0]=="--queue-file" and len(args)>=2: self._on_remote_cmd("queue-file",args[1])
-                    elif args[0]=="--queue-next-file" and len(args)>=2: self._on_remote_cmd("queue-next-file",args[1])
-                    elif args[0]=="--queue-remove" and len(args)>=2: self._on_remote_cmd("queue-remove",args[1])
-                    elif args[0]=="--queue-clear": self._on_remote_cmd("queue-clear","")
-                    elif args[0]=="--new-playlist" and len(args)>=2: self._on_remote_cmd("new-playlist",args[1])
-                    elif args[0]=="--add-to-playlist" and len(args)>=3: self._on_remote_cmd("add-to-playlist",args[1]+"\n"+args[2])
-                    elif args[0]=="--play-playlist" and len(args)>=2: self._on_remote_cmd("play-playlist",args[1])
-                    elif args[0]=="--set-theme" and len(args)>=2: self._on_remote_cmd("set-theme",args[1])
-                    # v16/v16.5: Browse IPC
-                    elif args[0]=="--browse-search" and len(args)>=2: self._on_remote_cmd("browse-search",args[1])
-                    elif args[0]=="--browse-country" and len(args)>=2: self._on_remote_cmd("browse-country",args[1])
-                    elif args[0]=="--browse-preview" and len(args)>=2: self._on_remote_cmd("browse-preview",args[1])  # v16.5: deprecated
-                    elif args[0]=="--browse-load-more": self._on_remote_cmd("browse-load-more","")
-                    elif args[0]=="--browse-download" and len(args)>=2: self._on_remote_cmd("browse-download",args[1])
+                with open(f, "r", encoding="utf-8", errors="replace") as fp:
+                    content = fp.read().strip()
+                f.unlink(missing_ok=True)
+                if content:
+                    args = content.split("\n")
+                    if args and args[0]:
+                        print(f"[Aurora] IPC received: {args[0]}", flush=True)
+                        if args[0]=="--play-file" and len(args)>=2: self._on_remote_cmd("play-file",args[1])
+                        elif args[0]=="--play": self._on_remote_cmd("play","")
+                        elif args[0]=="--pause": self._on_remote_cmd("pause","")
+                        elif args[0]=="--toggle": self._on_remote_cmd("toggle","")
+                        elif args[0]=="--next": self._on_remote_cmd("next","")
+                        elif args[0] in ("--prev","--previous"): self._on_remote_cmd("prev","")
+                        elif args[0]=="--stop": self._on_remote_cmd("stop","")
+                        # v15: queue / playlist / theme over IPC
+                        elif args[0]=="--queue-file" and len(args)>=2: self._on_remote_cmd("queue-file",args[1])
+                        elif args[0]=="--queue-next-file" and len(args)>=2: self._on_remote_cmd("queue-next-file",args[1])
+                        elif args[0]=="--queue-remove" and len(args)>=2: self._on_remote_cmd("queue-remove",args[1])
+                        elif args[0]=="--queue-clear": self._on_remote_cmd("queue-clear","")
+                        elif args[0]=="--new-playlist" and len(args)>=2: self._on_remote_cmd("new-playlist",args[1])
+                        elif args[0]=="--add-to-playlist" and len(args)>=3: self._on_remote_cmd("add-to-playlist",args[1]+"\n"+args[2])
+                        elif args[0]=="--play-playlist" and len(args)>=2: self._on_remote_cmd("play-playlist",args[1])
+                        elif args[0]=="--set-theme" and len(args)>=2: self._on_remote_cmd("set-theme",args[1])
+                        # v16/v16.5: Browse IPC
+                        elif args[0]=="--browse-search" and len(args)>=2: self._on_remote_cmd("browse-search",args[1])
+                        elif args[0]=="--browse-country" and len(args)>=2: self._on_remote_cmd("browse-country",args[1])
+                        elif args[0]=="--browse-preview" and len(args)>=2: self._on_remote_cmd("browse-preview",args[1])  # v16.5: deprecated
+                        elif args[0]=="--browse-load-more": self._on_remote_cmd("browse-load-more","")
+                        elif args[0]=="--browse-download" and len(args)>=2: self._on_remote_cmd("browse-download",args[1])
             except Exception as e: print(f"[Aurora] IPC error: {e}", flush=True)
 
     # ===== v12.3: audio output device selector =====
@@ -6424,12 +6455,17 @@ def is_running():
             # other process, send_cmd() would silently no-op and the agent's
             # song would never play.
             try:
-                cmdline = Path(f"/proc/{old}/cmdline").read_text(errors="replace")
-                if "aurora_player" in cmdline:
+                proc_path = Path(f"/proc/{old}/cmdline")
+                if proc_path.exists():
+                    with open(proc_path, "r", encoding="utf-8", errors="replace") as pfile:
+                        cmdline = pfile.read()
+                    if "aurora_player" in cmdline:
+                        return True
+                    # PID reused by another process — clean up stale lock
+                    PID_FILE.unlink(missing_ok=True)
+                    return False
+                else:
                     return True
-                # PID reused by another process — clean up stale lock
-                PID_FILE.unlink(missing_ok=True)
-                return False
             except (FileNotFoundError, OSError):
                 # /proc not available (non-Linux) — trust os.kill result
                 return True
