@@ -25,47 +25,47 @@ contracts so they can be tested without starting Qt or a desktop session.
 
 ### Phase 1: Foundation
 
-- [ ] Task 1: Add pure v22 core contracts for queue ordering, lyrics parsing,
+- [x] Task 1: Add pure v22 core contracts for queue ordering, lyrics parsing,
   theme contrast, EQ validation/DSP, telemetry, and stream strategies.
-- [ ] Task 2: Add focused pytest coverage for those contracts and update the
+- [x] Task 2: Add focused pytest coverage for those contracts and update the
   installer/package metadata to ship the core package.
 
 ### Checkpoint: Foundation
 
-- [ ] `python3 -m py_compile aurora-player/aurora_player.py`
-- [ ] Focused and full pytest runs pass.
-- [ ] Existing `--version`, `--help`, and offline playlist commands still work.
+- [x] `python3 -m py_compile aurora-player/aurora_player.py`
+- [x] Focused and full pytest runs pass.
+- [x] Existing `--version`, `--help`, and offline playlist commands still work.
 
 ### Phase 2: Agent and Playback Core
 
-- [ ] Task 3: Replace file-only IPC as the primary transport with Unix-socket
+- [x] Task 3: Replace file-only IPC as the primary transport with Unix-socket
   JSON IPC, add hidden `--daemon` startup, and retain the fallback path.
-- [ ] Task 4: Integrate v22 telemetry fields, stream resolver status, EQ state,
+- [x] Task 4: Integrate v22 telemetry fields, stream resolver status, EQ state,
   queue position, buffer health, and new agent commands.
-- [ ] Task 5: Add embedded USLT/plain lyrics precedence and correct exponential
+- [x] Task 5: Add embedded USLT/plain lyrics precedence and correct exponential
   sleep fade/end-of-song behavior.
 
 ### Checkpoint: Core Features
 
-- [ ] Socket commands are acknowledged and delivered on the Qt main thread.
-- [ ] `--status` contains duration, bitrate, buffer health, queue position, and
+- [x] Socket commands are acknowledged and delivered on the Qt main thread.
+- [x] `--status` contains duration, bitrate, buffer health, queue position, and
   EQ preset fields.
-- [ ] Offline metadata/lyrics/EQ/queue checks pass without network access.
+- [x] Offline metadata/lyrics/EQ/queue checks pass without network access.
 
 ### Phase 3: Expressive UI
 
-- [ ] Task 6: Add WCAG-conscious light/dark/system palette switching and
+- [x] Task 6: Add WCAG-conscious light/dark/system palette switching and
   expressive spring-style control micro-interactions.
-- [ ] Task 7: Upgrade the visualizer to 60fps interpolation with configurable
+- [x] Task 7: Upgrade the visualizer to 60fps interpolation with configurable
   color schemes and expose drag-and-drop queue reordering.
-- [ ] Task 8: Update v22 documentation, help text, version metadata, and release
+- [x] Task 8: Update v22 documentation, help text, version metadata, and release
   notes.
 
 ### Checkpoint: Complete
 
-- [ ] Syntax verification and all repository tests pass.
-- [ ] GUI construction smoke test succeeds when PySide6/display support exists.
-- [ ] Git history contains focused descriptive commits for each progressive
+- [x] Syntax verification and all repository tests pass.
+- [x] GUI construction smoke test succeeds when PySide6/display support exists.
+- [x] Git history contains focused descriptive commits for each progressive
   improvement.
 
 ## Risks and Mitigations
