@@ -7108,8 +7108,6 @@ def main():
             send_cmd(args); print(f"[Aurora] Sent: {args[0]}"); return
         else:
             print("[Aurora] Not running."); sys.exit(1)
-        if is_running(): send_cmd(args); print(f"[Aurora] Sent: {args[0]}"); return
-        else: print("[Aurora] Not running."); sys.exit(1)
     # ===== v15: playlist / queue / theme CLI for the agent =====
     if args and args[0]=="--list-playlists":
         pls=load_pl()
