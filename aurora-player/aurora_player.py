@@ -92,6 +92,7 @@ from aurora_core.ipc import (
 from aurora_core.lyrics import read_embedded_lyrics
 from aurora_core.streams import STREAM_STRATEGIES, resolve_stream
 from aurora_core.telemetry import build_status
+from aurora_core.theme import make_palette as make_core_palette
 
 try:
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -500,6 +501,31 @@ def apply_theme(theme_id):
     M3.clear()
     M3.update(dict(pal))  # copy so we don't mutate the original
     _finish_m3()
+
+def apply_theme_mode(mode="dark", hue=DEFAULT_HUE, theme_id=THEME_DEFAULT):
+    """Apply dark/light/system Material roles without changing theme accents."""
+    mode = str(mode or "dark").lower()
+    if mode not in ("dark", "light", "system"):
+        mode = "dark"
+    if mode == "system":
+        # Before QApplication exists there is no reliable platform palette;
+        # keep the low-power dark default. Runtime switching resolves system
+        # through the same method after Qt has been created.
+        mode = "dark"
+    if mode == "light":
+        pal = make_core_palette(int(hue), "light")
+        # Preserve the selected theme's accent identity where possible while
+        # taking all surface/foreground roles from the contrast-safe palette.
+        if theme_id != THEME_DEFAULT:
+            base = THEMES.get(theme_id, DEFAULT_M3)
+            for key in ("primary", "on_primary", "secondary", "on_secondary", "tertiary", "on_tertiary"):
+                if key in base:
+                    pal[key] = base[key]
+    elif theme_id == THEME_DEFAULT:
+        pal = DEFAULT_M3 if abs(int(hue) - DEFAULT_HUE) <= 1 else make_m3(hue)
+    else:
+        pal = THEMES.get(theme_id, DEFAULT_M3)
+    M3.clear(); M3.update(dict(pal)); _finish_m3()
 def _svg(path_data, fill=None, size=24):
     fill = fill or M3["on_surface_variant"]
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="{fill}" width="{size}" height="{size}"><path d="{path_data}"/></svg>'
@@ -3204,6 +3230,8 @@ class Win(QMainWindow):
         self._sleep_fade_timer = None  # 5s fade-out timer
         self._sleep_target_volume = 0.0
         self._crossfade_seconds = float(self.cfg.get("crossfade_seconds", 0) or 0)
+        self._stream_status = {}
+        self._sleep_at_end_of_song = False
         self._build(); self._shortcuts(); self._tray()
         # v20: Show onboarding on first run (per ADR-003)
         if not self.cfg.get("onboarded_v20"):
@@ -3214,6 +3242,11 @@ class Win(QMainWindow):
         self.player.playbackStateChanged.connect(self._state_changed)
         # v12.2: execute remote (MPRIS/playerctl) commands on the main thread.
         self.remote_cmd.connect(self._on_remote_cmd)
+        # v22: primary headless transport. The callback only emits the queued
+        # Qt signal; no socket worker is allowed to touch player widgets.
+        self._ipc_server = UnixJSONServer(SOCKET_FILE, self._handle_ipc_payload)
+        if not self._ipc_server.start():
+            print("[Aurora][IPC] Unix socket unavailable; using command-file fallback", flush=True)
         # v15: async beat-graph level scanner + EQ-badge repaint ticker
         self.lv_scanner=LevelScanner(self); self.lv_scanner.done.connect(self._levels_done)
         self.eq_timer=QTimer(self); self.eq_timer.setInterval(200); self.eq_timer.timeout.connect(self._eq_tick)  # v17.6: slower (was 120ms)
@@ -3229,6 +3262,22 @@ class Win(QMainWindow):
         self._session_timer.setInterval(30000)  # save every 30s
         self._session_timer.timeout.connect(self._save_session_time)
         self._session_timer.start()
+        self._write_status()
+
+    def _handle_ipc_payload(self, payload):
+        """Accept a JSON command from the socket worker and queue it on Qt."""
+        if not isinstance(payload, dict):
+            return {"ok": False, "error": "request must be an object"}
+        try:
+            if payload.get("argv"):
+                argv = list(payload["argv"])
+            else:
+                command = str(payload.get("command", ""))
+                argv = ["--" + command] + [str(value) for value in payload.get("args", [])]
+            self._dispatch_ipc_args(argv)
+            return {"ok": True, "accepted": True, "id": payload.get("id")}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "id": payload.get("id")}
 
     def _build(self):
         c=Backdrop(); self.backdrop=c; self.setCentralWidget(c); ml=QHBoxLayout(c); ml.setContentsMargins(0,0,0,0); ml.setSpacing(0)
@@ -5019,21 +5068,39 @@ class Win(QMainWindow):
             print(f"[Aurora][v19.2] open folder failed: {e}", flush=True)
 
     # ===== v20: Sleep timer =====
+    def _sleep_status(self):
+        """Return machine-readable sleep timer state for agent telemetry."""
+        deadline = getattr(self, "_sleep_deadline", None)
+        remaining = max(0, int(deadline - datetime.now().timestamp())) if deadline else 0
+        active = bool(
+            (getattr(self, "_sleep_timer", None) and self._sleep_timer.isActive())
+            or getattr(self, "_sleep_at_end_of_song", False)
+            or (getattr(self, "_sleep_fade_timer", None) and self._sleep_fade_timer.isActive())
+        )
+        return {
+            "active": active,
+            "mode": "end-of-song" if getattr(self, "_sleep_at_end_of_song", False) else ("timer" if deadline else "none"),
+            "remaining_sec": remaining,
+            "fading": bool(getattr(self, "_sleep_fade_timer", None) and self._sleep_fade_timer.isActive()),
+        }
+
     def _start_sleep_timer(self, minutes: int):
-        """v20 ADR-002: Start sleep timer. On fire, fade out over 5s then pause."""
+        """Start a timer that uses an exponential five-second fade-out."""
         if minutes <= 0:
             self._cancel_sleep_timer()
             return
         ms = int(minutes * 60 * 1000)
         # Cancel existing
         if self._sleep_timer: self._sleep_timer.stop()
+        self._sleep_at_end_of_song = False
+        self._sleep_deadline = datetime.now().timestamp() + minutes * 60
         self._sleep_timer = QTimer(self)
         self._sleep_timer.setSingleShot(True)
         self._sleep_timer.timeout.connect(self._on_sleep_timer_fire)
         self._sleep_timer.start(ms)
-        end_time_str = ""  # could compute end time
         print(f"[Aurora][v20] Sleep timer set for {minutes} min", flush=True)
         self._show_toast(f"Sleep timer: {minutes} min")
+        self._write_status()
 
     def _on_sleep_timer_fire(self):
         """Fire: 5s fade-out, then pause."""
@@ -5041,36 +5108,44 @@ class Win(QMainWindow):
             return
         # Save target volume (we'll restore on next play)
         self._sleep_target_volume = self.audio.volume()
-        # 5s fade-out in 10 steps of 500ms
+        # 5s exponential fade-out in 20 short steps. Multiplication avoids
+        # the audible last-step jump of a linear decrement near silence.
         if self._sleep_fade_timer: self._sleep_fade_timer.stop()
-        steps = 10
-        current_vol = self.audio.volume()
-        step_vol = current_vol / steps
+        self._sleep_fade_factor = 0.65
         self._sleep_fade_step = 0
         self._sleep_fade_timer = QTimer(self)
-        self._sleep_fade_timer.timeout.connect(lambda: self._sleep_fade_step_fn(step_vol))
-        self._sleep_fade_timer.start(500)
+        self._sleep_fade_timer.timeout.connect(self._sleep_fade_step_fn)
+        self._sleep_fade_timer.start(250)
         print("[Aurora][v20] Sleep timer fired — fading out", flush=True)
+        self._write_status()
 
-    def _sleep_fade_step_fn(self, step_vol: float):
+    def _sleep_fade_step_fn(self):
         self._sleep_fade_step = getattr(self, "_sleep_fade_step", 0) + 1
-        new_vol = max(0.0, self.audio.volume() - step_vol)
+        new_vol = max(0.0, self.audio.volume() * getattr(self, "_sleep_fade_factor", 0.65))
         self.audio.setVolume(new_vol)
-        if new_vol <= 0.001 or self._sleep_fade_step >= 10:
+        if new_vol <= 0.001 or self._sleep_fade_step >= 20:
             self._sleep_fade_timer.stop()
             self.pause()
             # Restore volume silently for next play
             self.audio.setVolume(self._sleep_target_volume if self._sleep_target_volume > 0 else self._curve(self.cfg.get("vol", 70)))
+            self._sleep_fade_timer = None
+            self._sleep_timer = None
+            self._sleep_deadline = None
             self._show_toast("Sleep timer: paused 🌙")
+            self._write_status()
 
     def _cancel_sleep_timer(self):
+        was_active = bool(getattr(self, "_sleep_timer", None) or getattr(self, "_sleep_at_end_of_song", False))
         if self._sleep_timer:
             self._sleep_timer.stop()
             self._sleep_timer = None
-            self._show_toast("Sleep timer cancelled")
         if self._sleep_fade_timer:
             self._sleep_fade_timer.stop()
             self._sleep_fade_timer = None
+        self._sleep_at_end_of_song = False
+        self._sleep_deadline = None
+        if was_active: self._show_toast("Sleep timer cancelled")
+        self._write_status()
 
     def _show_sleep_timer_dialog(self):
         """Show sleep timer preset picker."""
@@ -5107,8 +5182,10 @@ class Win(QMainWindow):
         dlg.accept()
         if minutes == -1:
             # End of current song: set a flag that _status() checks
+            self._cancel_sleep_timer()
             self._sleep_at_end_of_song = True
             self._show_toast("Will pause after current song")
+            self._write_status()
         else:
             self._sleep_at_end_of_song = False
             self._start_sleep_timer(minutes)
@@ -5527,6 +5604,59 @@ class Win(QMainWindow):
         # Async rescan to pick up any other new files in ~/Downloads/
         self.scan()
 
+    def _play_url_async(self, url):
+        """Resolve an online URL off the GUI thread, then play its direct URL."""
+        url = str(url or "").strip()
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("stream URL must be http:// or https://")
+        self._stream_status = {"url": url, "state": "resolving", "strategy": ""}
+        self._write_status()
+        import threading
+        config = {
+            "browser": self.cfg.get("yt_browser_choice", ""),
+            "cookies_file": self.cfg.get("yt_cookies_file", ""),
+        }
+        def worker():
+            try:
+                result = resolve_stream(url, config=config)
+                QTimer.singleShot(0, lambda: self._on_stream_resolved(url, result))
+            except Exception as exc:
+                QTimer.singleShot(0, lambda: self._on_stream_failed(url, str(exc)))
+        threading.Thread(target=worker, name="aurora-stream-resolver", daemon=True).start()
+
+    def _on_stream_resolved(self, source_url, result):
+        self._stream_status = {
+            "url": source_url,
+            "state": "ready",
+            "strategy": result.strategy,
+            "resolved_url": result.url,
+        }
+        self.cur_idx = -1
+        self.cur = {
+            "title": source_url.rsplit("/", 1)[-1] or "Online stream",
+            "artist": "Online stream",
+            "album": "",
+            "duration": int(result.duration_ms / 1000) if result.duration_ms else 0,
+            "bit_rate": int(result.bitrate_kbps * 1000),
+            "art": None,
+            "path": source_url,
+            "source_url": source_url,
+            "date": datetime.now().timestamp(),
+        }
+        self.tl.setText(self.cur["title"]); self.al.setText(self.cur["artist"])
+        self.player.stop(); self.audio.setVolume(0.0)
+        self.player.setSource(QUrl(result.url)); self.player.play()
+        self.playing = True; self.pp.setIcon(self._ai); self._fade_in()
+        self._current_lyrics = {"lines": [], "source": "none"}
+        self._write_status(); self.mpris.update()
+        self._show_toast(f"Streaming via {result.strategy}")
+
+    def _on_stream_failed(self, source_url, error):
+        self._stream_status = {"url": source_url, "state": "error", "error": error}
+        self._write_status()
+        print(f"[Aurora][Stream] all fallback strategies failed: {error}", flush=True)
+        self._show_toast("Could not resolve stream")
+
     def play(self):
         # v12.2: 'play' with nothing selected used to silently do NOTHING,
         # so a fresh 'playerctl --player=aurora play' looked broken. Now it
@@ -5560,9 +5690,35 @@ class Win(QMainWindow):
             self.play_idx(idx)
         elif 0<=self.cur_idx<len(self.songs)-1: self.play_idx(self.cur_idx+1)
         elif self.repeat==RepeatMode.ALL and self.songs: self.play_idx(0)
+
+    def _dispatch_ipc_args(self, args):
+        """Normalize CLI/socket argv into the single Qt command entry point."""
+        if not args:
+            return
+        if args[0] == "--browse-preview":
+            # Deprecated compatibility command; it is intentionally a no-op.
+            print("[Aurora] browse-preview is deprecated; use browse-download", flush=True)
+            return
+        command = command_from_argv(args)
+        name = command["command"]
+        values = command.get("args", [])
+        if name == "add-to-playlist":
+            argument = values[0] + "\n" + values[1]
+        elif name == "eq-gain":
+            argument = values[0] + "\n" + values[1]
+        elif name == "seek":
+            # CLI seek is expressed in seconds; MPRIS seek is milliseconds.
+            argument = str(int(float(values[0]) * 1000))
+        else:
+            argument = values[0] if values else ""
+        self._on_remote_cmd(name, argument)
+
     def _on_remote_cmd(self,cmd,arg):
         # v12.2: single main-thread entry point for MPRIS + file IPC commands
         try:
+            if cmd == "argv":
+                self._dispatch_ipc_args(json.loads(arg))
+                return
             if cmd=="play": self.play()
             elif cmd=="pause": self.pause()
             elif cmd=="toggle": self.toggle()
@@ -5571,8 +5727,11 @@ class Win(QMainWindow):
             elif cmd=="prev": self.prev()
             elif cmd=="seek": self.player.setPosition(max(0,self.player.position()+int(arg)))
             elif cmd=="setpos": self.player.setPosition(max(0,int(arg)))
-            elif cmd=="volume": self.vol.setValue(max(0,min(100,int(float(arg)*100))))
+            elif cmd=="volume":
+                raw_volume = float(arg)
+                self.vol.setValue(max(0,min(100,int(round(raw_volume * 100 if raw_volume <= 1 else raw_volume)))))
             elif cmd=="play-file": self.play_file(arg)
+            elif cmd=="play-url": self._play_url_async(arg)
             # ===== v15: queue / playlist / theme agent commands =====
             elif cmd=="queue-file":
                 self.queue.append(self._resolve(arg)); self._refq()
@@ -5588,6 +5747,17 @@ class Win(QMainWindow):
                     print(f"[Aurora] play-playlist: '{arg}' not found or empty", flush=True)
             elif cmd=="set-theme":
                 self.hue_slider.setValue(int(arg)%360)
+            elif cmd=="set-mode":
+                self._set_theme_mode(arg)
+            elif cmd=="eq-preset":
+                self._apply_eq_preset(arg)
+            elif cmd=="eq-gain":
+                band, gain = arg.split("\n", 1)
+                self._on_eq_band_changed(int(band), int(gain))
+            elif cmd=="sleep-timer":
+                self._start_sleep_timer(int(float(arg)))
+            elif cmd=="cancel-sleep":
+                self._cancel_sleep_timer()
             # ===== v16: Browse agent commands =====
             elif cmd=="browse-search":
                 # Switch to Browse page + run query
@@ -5810,37 +5980,50 @@ class Win(QMainWindow):
         for lw in (self.slist,self.qlist,self.pl_songlist):
             if lw.isVisible(): lw.viewport().update()
     def _write_status(self):
-        # v12.2: machine-readable status so the agent can check what's playing
-        # even without playerctl (read via: aurora-player --status)
+        # v22: build one additive, JSON-safe contract for playerctl users and
+        # autonomous agents. The legacy top-level fields are retained by the
+        # core builder for existing integrations.
         try:
             st=self.player.playbackState()
             s="playing" if st==QMediaPlayer.PlayingState else ("paused" if st==QMediaPlayer.PausedState else "stopped")
-            STATUS_FILE.write_text(json.dumps({
-                "state":s,
-                "title":self.cur["title"] if self.cur else "",
-                "artist":self.cur["artist"] if self.cur else "",
-                "path":self.cur["path"] if self.cur else "",
-                "position_sec":int(self.player.position()/1000),
-                "duration_sec":self.cur["duration"] if self.cur else 0,
-                # v15: richer status for the agent
-                "queue":[{"title":s["title"],"artist":s["artist"],"path":s["path"]} for s in self.queue[:100]],
-                "queue_index":self.qidx if self.queue else -1,
-                "queue_length":len(self.queue),
-                "playlists":{n:len(self._pl_paths(n)) for n in self.playlists},
-                "theme_hue":int(self.cfg.get("theme_hue",DEFAULT_HUE)),
-                "shuffle":self.shuffle,
-                "repeat":self.repeat.name.lower(),
-                "volume":self.vol.value() if hasattr(self,'vol') else 0,
-                "version":APP_VERSION,
-                # v16: Browse state for the agent
-                "browse": self._browse_get_status() if hasattr(self, "_browse_get_status") else {},
-                # v16.8: History + session stats for the agent
-                "history": self._get_history_status() if hasattr(self, "_get_history_status") else {},
-                "session": self._get_session_status() if hasattr(self, "_get_session_status") else {},
-                # v17.0: Equalizer + repeat/skip stats
-                "equalizer": self._get_equalizer_status() if hasattr(self, "_get_equalizer_status") else {},
-                "repeat_stats": self._get_repeat_stats_status() if hasattr(self, "_get_repeat_stats_status") else {},
-                "updated":datetime.now().isoformat()},indent=2))
+            buffer_health = 0.0
+            try:
+                buffer_health = float(self.player.bufferProgress())
+            except Exception:
+                try:
+                    media_status = self.player.mediaStatus()
+                    buffer_health = 1.0 if media_status in (
+                        QMediaPlayer.LoadedMedia,
+                        QMediaPlayer.BufferedMedia,
+                        QMediaPlayer.EndOfMedia,
+                    ) else 0.0
+                except Exception:
+                    pass
+            status = build_status(
+                state=s,
+                track=self.cur,
+                position_ms=self.player.position(),
+                queue=self.queue,
+                queue_index=self.qidx,
+                volume=self.vol.value() if hasattr(self, "vol") else 0,
+                eq= self._get_equalizer_status() if hasattr(self, "_get_equalizer_status") else {},
+                buffer_health=buffer_health,
+                bitrate=int(self.cur.get("bit_rate", 0) if self.cur else 0),
+                version=APP_VERSION,
+                theme_hue=int(self.cfg.get("theme_hue", DEFAULT_HUE)),
+                theme_mode=self.cfg.get("theme_mode", "dark"),
+                repeat=self.repeat.name.lower(),
+                shuffle=self.shuffle,
+                playlists={n:len(self._pl_paths(n)) for n in self.playlists},
+                lyrics=getattr(self, "_current_lyrics", None),
+                stream=self._stream_status,
+            )
+            status["browse"] = self._browse_get_status() if hasattr(self, "_browse_get_status") else {}
+            status["history"] = self._get_history_status() if hasattr(self, "_get_history_status") else {}
+            status["session"] = self._get_session_status() if hasattr(self, "_get_session_status") else {}
+            status["repeat_stats"] = self._get_repeat_stats_status() if hasattr(self, "_get_repeat_stats_status") else {}
+            status["sleep_timer"] = self._sleep_status()
+            STATUS_FILE.write_text(json.dumps(status, indent=2))
         except Exception as e: print(f"[Aurora] status write: {e}", flush=True)
     def prev(self):
         # v17.0: record skip-backward (only if we actually skip, not restart)
@@ -5905,7 +6088,11 @@ class Win(QMainWindow):
     def _status(self,s):
         if s==QMediaPlayer.EndOfMedia:
             print(f"[Aurora] Track ended. repeat={self.repeat} shuffle={self.shuffle}", flush=True)
-            if self.repeat==RepeatMode.ONE:
+            if self._sleep_at_end_of_song:
+                self._sleep_at_end_of_song = False
+                self.pause()
+                self._write_status()
+            elif self.repeat==RepeatMode.ONE:
                 self.player.setPosition(0); self.player.play()
             elif self.shuffle and len(self.songs)>1:
                 import random
@@ -6158,7 +6345,7 @@ class Win(QMainWindow):
         """v18: Theme selector changed — apply the new theme instantly."""
         theme_id = self.theme_combo.currentIndex()
         self.cfg["theme_id"] = theme_id; save_cfg(self.cfg)
-        apply_theme(theme_id)
+        apply_theme_mode(self.cfg.get("theme_mode", "dark"), self.cfg.get("theme_hue", DEFAULT_HUE), theme_id)
         app = QApplication.instance()
         if app: app.setStyleSheet(build_ss())
         # Re-tint all icons + sidebar title with new palette
@@ -6183,6 +6370,22 @@ class Win(QMainWindow):
         self.viz.update()
         print(f"[Aurora][v18] Theme changed to: {THEME_NAMES[theme_id]}", flush=True)
 
+    def _set_theme_mode(self, mode):
+        """Switch the palette mode from the GUI or an agent command."""
+        mode = str(mode or "dark").lower()
+        if mode not in ("dark", "light", "system"):
+            raise ValueError("theme mode must be dark, light, or system")
+        self.cfg["theme_mode"] = mode
+        save_cfg(self.cfg)
+        if hasattr(self, "theme_combo"):
+            self._on_theme_changed()
+        else:
+            apply_theme_mode(mode, self.cfg.get("theme_hue", DEFAULT_HUE), self.cfg.get("theme_id", THEME_DEFAULT))
+            app = QApplication.instance()
+            if app: app.setStyleSheet(build_ss())
+        self._write_status()
+        self._show_toast(f"Theme mode: {mode}")
+
     def _set_theme_by_index(self, idx: int):
         """v21: Set theme directly from clickable preview card."""
         if 0 <= idx < len(THEME_NAMES):
@@ -6198,7 +6401,7 @@ class Win(QMainWindow):
         self._retheme(h)
     def _retheme(self,hue):
         """v15: regenerate palette + stylesheet + icons from a hue, live."""
-        apply_theme_hue(hue)
+        apply_theme_mode(self.cfg.get("theme_mode", "dark"), hue, self.cfg.get("theme_id", THEME_DEFAULT))
         app=QApplication.instance()
         if app: app.setStyleSheet(build_ss())
         # re-tint icons that were baked with explicit colors
@@ -6288,28 +6491,7 @@ class Win(QMainWindow):
                 args=f.read_text().strip().split("\n"); f.unlink()
                 if args and args[0]:
                     print(f"[Aurora] IPC received: {args[0]}", flush=True)
-                    if args[0]=="--play-file" and len(args)>=2: self._on_remote_cmd("play-file",args[1])
-                    elif args[0]=="--play": self._on_remote_cmd("play","")
-                    elif args[0]=="--pause": self._on_remote_cmd("pause","")
-                    elif args[0]=="--toggle": self._on_remote_cmd("toggle","")
-                    elif args[0]=="--next": self._on_remote_cmd("next","")
-                    elif args[0] in ("--prev","--previous"): self._on_remote_cmd("prev","")
-                    elif args[0]=="--stop": self._on_remote_cmd("stop","")
-                    # v15: queue / playlist / theme over IPC
-                    elif args[0]=="--queue-file" and len(args)>=2: self._on_remote_cmd("queue-file",args[1])
-                    elif args[0]=="--queue-next-file" and len(args)>=2: self._on_remote_cmd("queue-next-file",args[1])
-                    elif args[0]=="--queue-remove" and len(args)>=2: self._on_remote_cmd("queue-remove",args[1])
-                    elif args[0]=="--queue-clear": self._on_remote_cmd("queue-clear","")
-                    elif args[0]=="--new-playlist" and len(args)>=2: self._on_remote_cmd("new-playlist",args[1])
-                    elif args[0]=="--add-to-playlist" and len(args)>=3: self._on_remote_cmd("add-to-playlist",args[1]+"\n"+args[2])
-                    elif args[0]=="--play-playlist" and len(args)>=2: self._on_remote_cmd("play-playlist",args[1])
-                    elif args[0]=="--set-theme" and len(args)>=2: self._on_remote_cmd("set-theme",args[1])
-                    # v16/v16.5: Browse IPC
-                    elif args[0]=="--browse-search" and len(args)>=2: self._on_remote_cmd("browse-search",args[1])
-                    elif args[0]=="--browse-country" and len(args)>=2: self._on_remote_cmd("browse-country",args[1])
-                    elif args[0]=="--browse-preview" and len(args)>=2: self._on_remote_cmd("browse-preview",args[1])  # v16.5: deprecated
-                    elif args[0]=="--browse-load-more": self._on_remote_cmd("browse-load-more","")
-                    elif args[0]=="--browse-download" and len(args)>=2: self._on_remote_cmd("browse-download",args[1])
+                    self._dispatch_ipc_args(args)
             except Exception as e: print(f"[Aurora] IPC error: {e}", flush=True)
 
     # ===== v12.3: audio output device selector =====
@@ -6442,6 +6624,8 @@ class Win(QMainWindow):
         self.cfg["w"]=self.width(); self.cfg["h"]=self.height(); save_cfg(self.cfg); save_pl(self.playlists)
         # v16.8: save final session time on exit
         self._save_session_time()
+        if hasattr(self, "_ipc_server"):
+            self._ipc_server.stop()
         e.accept()
 
 # ===== IPC =====
@@ -6467,7 +6651,21 @@ def is_running():
     return False
 
 def send_cmd(args):
-    (CONFIG_DIR/"cmd.txt").write_text("\n".join(args))
+    """Send a command over v22 socket IPC, falling back to the legacy file."""
+    try:
+        command = command_from_argv(args)
+        response = send_json_command(SOCKET_FILE, command)
+        if response.get("ok"):
+            return response
+    except Exception:
+        pass
+    # Atomic replacement prevents a reader from observing a partially-written
+    # command when a headless agent sends during the 500ms compatibility poll.
+    command_file = CONFIG_DIR / "cmd.txt"
+    temp_file = CONFIG_DIR / f"cmd.{os.getpid()}.tmp"
+    temp_file.write_text("\n".join(args))
+    os.replace(temp_file, command_file)
+    return {"ok": True, "transport": "file"}
 
 # ===== v16.8: /helper command — comprehensive command reference =====
 def _print_helper_command():
@@ -6718,7 +6916,23 @@ class _LyricsOverlay(QWidget):
 # ===== Main =====
 def main():
     args=sys.argv[1:]
-    if args and args[0] in ("--play","--pause","--toggle","--next","--prev","--previous","--stop","--queue-clear"):
+    daemon_mode = bool(args and args[0] == "--daemon")
+    if daemon_mode:
+        if len(args) > 1:
+            print("Usage: aurora-player --daemon"); sys.exit(1)
+        args = []
+        if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    if args and args[0] in (
+        "--play","--pause","--toggle","--next","--prev","--previous","--stop",
+        "--queue-clear","--volume","--seek","--setpos","--play-url",
+    ):
+        if args[0] == "--play-url" and not is_running():
+            pass  # start a local GUI/daemon instance below, then resolve the URL
+        elif is_running():
+            send_cmd(args); print(f"[Aurora] Sent: {args[0]}"); return
+        else:
+            print("[Aurora] Not running."); sys.exit(1)
         if is_running(): send_cmd(args); print(f"[Aurora] Sent: {args[0]}"); return
         else: print("[Aurora] Not running."); sys.exit(1)
     # ===== v15: playlist / queue / theme CLI for the agent =====
@@ -6741,6 +6955,33 @@ def main():
         if is_running(): send_cmd(args[:2]); print(f"[Aurora] Sent: theme hue {args[1]}"); return
         c=load_cfg(); c["theme_hue"]=int(args[1])%360; save_cfg(c)
         print(f"[Aurora] Theme hue {int(args[1])%360} saved (applies on next launch)."); return
+    if args and args[0] in ("--set-mode", "--theme-mode"):
+        if len(args)<2 or args[1].lower() not in ("dark", "light", "system"):
+            print("Usage: aurora-player --set-mode <dark|light|system>"); sys.exit(1)
+        if is_running(): send_cmd(["--set-mode", args[1].lower()]); print(f"[Aurora] Sent: theme mode {args[1].lower()}"); return
+        c=load_cfg(); c["theme_mode"]=args[1].lower(); save_cfg(c)
+        print(f"[Aurora] Theme mode {args[1].lower()} saved (applies on next launch)."); return
+    if args and args[0]=="--eq-preset":
+        if len(args)<2 or args[1] not in EQ_PRESETS:
+            print("Usage: aurora-player --eq-preset <preset>"); print("Presets: " + ", ".join(EQ_PRESETS)); sys.exit(1)
+        if is_running(): send_cmd(args[:2]); print(f"[Aurora] Sent: EQ preset {args[1]}"); return
+        eq=load_equalizer(); eq["preset"]=args[1]; eq["gains"]=list(EQ_PRESETS[args[1]]); save_equalizer(eq)
+        print(f"[Aurora] EQ preset {args[1]} saved."); return
+    if args and args[0]=="--eq-gain":
+        if len(args)<3: print("Usage: aurora-player --eq-gain <band 0-9> <gain -12..12>"); sys.exit(1)
+        try: band, gain = int(args[1]), max(EQ_MIN_GAIN, min(EQ_MAX_GAIN, int(float(args[2]))))
+        except ValueError: print("Band and gain must be numeric."); sys.exit(1)
+        if not 0 <= band < EQ_BANDS_COUNT: print("Band must be between 0 and 9."); sys.exit(1)
+        if is_running(): send_cmd(args[:3]); print(f"[Aurora] Sent: EQ band {band} gain {gain}"); return
+        eq=load_equalizer(); eq["gains"][band]=gain; eq["preset"]="Custom"; save_equalizer(eq)
+        print(f"[Aurora] EQ band {band} set to {gain}dB."); return
+    if args and args[0]=="--sleep-timer":
+        if len(args)<2: print("Usage: aurora-player --sleep-timer <minutes>"); sys.exit(1)
+        if is_running(): send_cmd(args[:2]); print(f"[Aurora] Sent: sleep timer {args[1]} min"); return
+        print("[Aurora] Not running."); sys.exit(1)
+    if args and args[0]=="--cancel-sleep":
+        if is_running(): send_cmd(args); print("[Aurora] Sent: cancel sleep timer"); return
+        print("[Aurora] Not running."); sys.exit(1)
     if args and args[0] in ("--play-playlist","--queue-file","--queue-next-file","--queue-remove"):
         if len(args)<2: print(f"Usage: aurora-player {args[0]} <arg>"); sys.exit(1)
         if is_running(): send_cmd(args[:2]); print(f"[Aurora] Sent: {args[0]} {args[1]}"); return
@@ -6867,9 +7108,10 @@ def main():
                           "results": out}, indent=2))
         return
     if args and args[0]=="--status":
-        # v12.2: agent-friendly status without needing playerctl
+        # v22: agent-friendly status with a stable shape even before the first
+        # media event has been emitted.
         if is_running() and STATUS_FILE.exists(): print(STATUS_FILE.read_text()); return
-        print('{"state": "not-running"}'); sys.exit(1)
+        print(json.dumps(build_status(state="not-running", version=APP_VERSION), indent=2)); sys.exit(1)
     if args and args[0]=="--play-file":
         if len(args)<2: print("Usage: aurora-player --play-file <path>"); sys.exit(1)
         if is_running(): send_cmd(args); print(f"[Aurora] Sent: {args[1]}"); return
@@ -6883,9 +7125,13 @@ def main():
 
 Usage:
   aurora-player                              Launch GUI
+  aurora-player --daemon                     Launch hidden headless engine
   aurora-player --play-file <path>           Play file
+  aurora-player --play-url <https://...>     Resolve and play an online stream
   aurora-player --play/--pause/--toggle/--next/--prev/--stop
-  aurora-player --status                     Playback status JSON (incl. queue, playlists, theme, browse)
+  aurora-player --volume <0-100>             Set volume through IPC
+  aurora-player --seek <seconds>             Seek relative to current position
+  aurora-player --status                     v22 telemetry JSON (queue, buffer, EQ, lyrics)
 
 Queue (v15):
   aurora-player --queue-file <path>          Add file to end of queue
@@ -6901,6 +7147,13 @@ Playlists (v15):
 
 Theme (v15):
   aurora-player --set-theme <hue 0-359>      Retheme whole app from a hue (239 = default indigo)
+  aurora-player --set-mode <dark|light|system>  Switch contrast-safe palette mode
+
+Equalizer and sleep timer (v22):
+  aurora-player --eq-preset <name>           Apply a 10-band preset
+  aurora-player --eq-gain <band> <gain>      Set band 0-9 to -12..12 dB
+  aurora-player --sleep-timer <minutes>      Fade out exponentially, then pause
+  aurora-player --cancel-sleep               Cancel timer/fade
 
 Browse (v16/v16.5/v16.6) — iTunes search + infinite scroll + FULL-TRACK download + bot-bypass:
   aurora-player --browse-search <query>              Run search in the GUI (first page)
@@ -6931,15 +7184,16 @@ Config: {CONFIG_FILE}"""); return
     if is_running() and not args:
         print("[Aurora] Already running."); return
     PID_FILE.write_text(str(os.getpid()))
-    # v18: apply the saved theme (NEW) or hue (existing) BEFORE any widget/stylesheet is built
+    # v22: apply the saved theme mode before any widget/stylesheet is built.
     cfg = load_cfg()
     theme_id = cfg.get("theme_id", THEME_DEFAULT)
-    if theme_id > 0:
-        apply_theme(theme_id)  # v18: new theme system
-    else:
-        apply_theme_hue(cfg.get("theme_hue", DEFAULT_HUE))  # existing hue slider
+    apply_theme_mode(cfg.get("theme_mode", "dark"), cfg.get("theme_hue", DEFAULT_HUE), theme_id)
     app=QApplication(sys.argv); app.setApplicationName(APP_NAME); app.setApplicationVersion(APP_VERSION); app.setStyleSheet(build_ss())
-    w=Win(); w.show()
+    w=Win()
+    if daemon_mode:
+        w.hide()
+    else:
+        w.show()
     if args and args[0]=="--play-file" and len(args)>=2:
         def dp():
             if hasattr(w,'sc') and w.sc.isRunning():
@@ -6966,6 +7220,8 @@ Config: {CONFIG_FILE}"""); return
                         w.player.play()
             QTimer.singleShot(2000, check_playing)
         QTimer.singleShot(1500,dp)
+    if args and args[0]=="--play-url" and len(args)>=2:
+        QTimer.singleShot(800, lambda: w._play_url_async(args[1]))
     def cleanup():
         # v12.2: only remove the lock if WE own it (don't kill another instance's lock)
         try:
