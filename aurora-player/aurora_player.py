@@ -100,6 +100,7 @@ try:
         QLineEdit, QComboBox, QMenu, QSystemTrayIcon, QInputDialog, QSizePolicy, QDialog,
         QStyledItemDelegate, QStyle, QScrollArea, QAbstractItemView, QDialogButtonBox,
         QProgressBar, QToolButton, QGridLayout, QSpacerItem, QSpinBox, QCheckBox)
+    from PySide6.QtWidgets import QStyleOptionButton
     from PySide6.QtCore import (Qt, QUrl, QTimer, QThread, Signal, QSize, QPropertyAnimation,
         QEasingCurve, QByteArray, QParallelAnimationGroup, QSequentialAnimationGroup,
         QRectF, QRect, QObject, QPoint, QMutex, QReadWriteLock, Property)
@@ -123,7 +124,7 @@ try:
     from mpris_server.adapters import MprisAdapter
     from mpris_server.base import PlayState, Track
     HAS_MPRIS = True
-except ImportError:
+except (ImportError, SyntaxError):
     HAS_MPRIS = False; PlayState = None; Track = None
 
 # ===== Constants =====
@@ -280,6 +281,7 @@ SUPPORTED = {".mp3", ".m4a", ".flac", ".ogg", ".wav", ".opus", ".aac", ".wma"}
 # The user can change the graph type in Settings → Visualizer card.
 # Modes: 0=Beat Graph (existing), 1=Bars, 2=Mirror Bars, 3=Wave, 4=Radial Bars, 5=Blocks
 VIZ_MODES = ["Beat Graph", "Bars", "Mirror Bars", "Wave", "Radial Bars", "Blocks"]
+VIZ_COLOR_SCHEMES = ["Aurora", "Spectrum", "Monochrome", "Heat"]
 VIZ_DEFAULT_MODE = 0
 VIZ_FILE = CONFIG_DIR / "visualizer.json"
 
@@ -526,6 +528,19 @@ def apply_theme_mode(mode="dark", hue=DEFAULT_HUE, theme_id=THEME_DEFAULT):
     else:
         pal = THEMES.get(theme_id, DEFAULT_M3)
     M3.clear(); M3.update(dict(pal)); _finish_m3()
+
+def effective_theme_mode(mode):
+    """Resolve the system choice from Qt's current window palette."""
+    mode = str(mode or "dark").lower()
+    if mode != "system":
+        return mode if mode in ("dark", "light") else "dark"
+    try:
+        app = QApplication.instance()
+        if app:
+            return "light" if app.palette().color(QPalette.Window).lightness() >= 128 else "dark"
+    except Exception:
+        pass
+    return "dark"
 def _svg(path_data, fill=None, size=24):
     fill = fill or M3["on_surface_variant"]
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="{fill}" width="{size}" height="{size}"><path d="{path_data}"/></svg>'
@@ -621,28 +636,61 @@ class ClickSlider(QSlider):
         super().mousePressEvent(e)
 
 # ===== v17.3: AnimatedButton — press-scale animation on ALL control buttons =====
-# v21 BUGFIX: scale animation was causing visual glitches + layout drift.
-# Per user request, the scale animation is now DISABLED by default.
-# The class still exists for backwards compat (used by browse_btn etc.)
-# but mousePressEvent / enterEvent / leaveEvent no longer animate.
+# v22: the scale animation is a bounded spring and only affects the painter;
+# layout geometry remains fixed so narrow player bars cannot drift.
 class AnimatedButton(QPushButton):
-    """v21: AnimatedButton — scale animation DISABLED per user request.
-    Acts as a plain QPushButton now. Kept for backwards compatibility."""
+    """v22: small critically-damped spring for expressive control feedback."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._scale = 1.0
-        self._anim = None
+        self._spring_target = 1.0
+        self._spring_velocity = 0.0
+        self._spring_timer = QTimer(self)
+        self._spring_timer.setInterval(16)
+        self._spring_timer.timeout.connect(self._spring_tick)
     def _get_scale(self): return self._scale
     def _set_scale(self, v):
         self._scale = v
         self.update()
     scale = Property(float, _get_scale, _set_scale)
-    # v21: No-op the animation methods — no more scaling
+    def _spring_to(self, target):
+        self._spring_target = target
+        if not self._spring_timer.isActive(): self._spring_timer.start()
+
+    def _spring_tick(self):
+        displacement = self._spring_target - self._scale
+        self._spring_velocity += displacement * 0.24
+        self._spring_velocity *= 0.72
+        self._scale += self._spring_velocity
+        if abs(displacement) < 0.001 and abs(self._spring_velocity) < 0.001:
+            self._scale = self._spring_target
+            self._spring_velocity = 0.0
+            self._spring_timer.stop()
+        self.update()
+
+    def paintEvent(self, event):
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        center = self.rect().center()
+        painter.translate(center)
+        painter.scale(self._scale, self._scale)
+        painter.translate(-center)
+        self.style().drawControl(QStyle.CE_PushButton, option, painter, self)
+        painter.end()
+
     def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton: self._spring_to(0.94)
         super().mousePressEvent(e)
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        self._spring_to(1.03 if self.underMouse() else 1.0)
     def enterEvent(self, e):
+        self._spring_to(1.03)
         super().enterEvent(e)
     def leaveEvent(self, e):
+        self._spring_to(1.0)
         super().leaveEvent(e)
 
 # ===== v15: LevelScanner — async per-track peak levels for the visualizer ====
@@ -731,6 +779,7 @@ class Visualizer(QWidget):
         self._pulse = 0.0; self._phase = 0.0
         # v17.5: Real-time spectrum bars from QAudioBufferOutput (LIVE audio sync)
         self.live_spectrum = []  # list of 0.0-1.0 floats from real-time FFT
+        self.target_spectrum = []
         self.use_live = False    # True when live_spectrum has data
         # v17.3: Visualizer mode (0=Beat Graph, 1=Bars, 2=Mirror, 3=Wave, 4=Radial, 5=Blocks)
         viz_cfg = load_viz_config()
@@ -738,20 +787,27 @@ class Visualizer(QWidget):
         self.bar_w = viz_cfg.get("bar_width", 4)
         self.gap = viz_cfg.get("bar_gap", 2)
         self.rounded = viz_cfg.get("rounded", True)
-        self.timer = QTimer(self); self.timer.setInterval(100); self.timer.timeout.connect(self._tick)  # v17.6: 10 FPS (was 30 — too fast)
+        self.smoothing = max(1, min(99, int(viz_cfg.get("smoothing", 77))))
+        self.color_scheme = viz_cfg.get("color_scheme", "Aurora")
+        if self.color_scheme not in VIZ_COLOR_SCHEMES: self.color_scheme = "Aurora"
+        # v22: paint at 60fps while interpolating the lower-rate FFT samples.
+        self.timer = QTimer(self); self.timer.setInterval(16); self.timer.timeout.connect(self._tick)
     def set_levels(self, levels, real):
         self.levels = levels or []; self.real = real
+        self.target_spectrum = []; self.live_spectrum = []; self.use_live = False
         self._resample(); self.update()
     def set_spectrum(self, bars):
         """v17.5: Receive REAL-TIME FFT spectrum bars from QAudioBufferOutput.
         bars = list of 0.0-1.0 floats (typically 32-64 bars).
         When this is called, the visualizer switches to live mode (synced to
         actual audio output) instead of pre-computed levels."""
-        self.live_spectrum = list(bars) if bars else []
-        self.use_live = len(self.live_spectrum) > 0
+        self.target_spectrum = list(bars) if bars else []
+        if not self.live_spectrum or len(self.live_spectrum) != len(self.target_spectrum):
+            self.live_spectrum = list(self.target_spectrum)
+        self.use_live = len(self.target_spectrum) > 0
         # Also update _pulse from the live spectrum (average of first 8 bars = bass energy)
         if self.use_live:
-            bass_energy = sum(self.live_spectrum[:8]) / max(1, len(self.live_spectrum[:8]))
+            bass_energy = sum(self.target_spectrum[:8]) / max(1, len(self.target_spectrum[:8]))
             self._pulse += (bass_energy - self._pulse) * 0.50  # fast follow
         self.update()
     def set_playing(self, playing):
@@ -789,6 +845,18 @@ class Visualizer(QWidget):
         The old code used `self._phase += 0.30` (a fake sine-wave) for the
         shimmer effect — that's been removed. ALL animation now derives from
         real audio data via _pulse (the smoothed amplitude at the playhead)."""
+        if self.target_spectrum:
+            # FFT callbacks are deliberately throttled for Celeron-class CPUs;
+            # this critically damped interpolation keeps the visual motion at
+            # 60fps without doing another FFT on every paint tick.
+            response = max(0.08, min(0.55, 1.0 - self.smoothing / 100.0))
+            if len(self.live_spectrum) != len(self.target_spectrum):
+                self.live_spectrum = list(self.target_spectrum)
+            else:
+                self.live_spectrum = [
+                    current + (target - current) * response
+                    for current, target in zip(self.live_spectrum, self.target_spectrum)
+                ]
         if self.bars:
             # v17.4: Get the REAL audio level at the current playhead position
             playhead_idx = min(len(self.bars) - 1, int(self._ratio() * len(self.bars)))
@@ -804,6 +872,20 @@ class Visualizer(QWidget):
             # No bars yet — flatline (no fake sine wave)
             self._pulse += (0.0 - self._pulse) * 0.3
         self.update()
+
+    def _viz_color(self, index=0, count=1):
+        """Return a scheme-aware color for a visualizer element."""
+        import colorsys
+        if self.color_scheme == "Monochrome":
+            return QColor(M3["on_surface_variant"])
+        if self.color_scheme == "Heat":
+            color = QColor(M3["error"] if index > count * 0.65 else M3["tertiary"])
+            return color
+        if self.color_scheme == "Spectrum":
+            hue = int((index / max(1, count - 1)) * 300) % 360
+            red, green, blue = colorsys.hsv_to_rgb(hue / 360.0, 0.72, 0.95)
+            return QColor(round(red * 255), round(green * 255), round(blue * 255))
+        return QColor(M3["primary"] if index < count * 0.58 else M3["tertiary"])
     def _seek(self, x):
         d = self.win.player.duration()
         if d > 0:
@@ -878,17 +960,17 @@ class Visualizer(QWidget):
                     amp = min(1.0, lv * (1.0 + 0.55 * self._pulse * math.exp(-d*d/18.0)))
             bh = max(2.0, amp * (h - 14))
             if i <= play_i:
-                col = QColor(M3["primary"]); col.setAlpha(230)
+                col = self._viz_color(i, n); col.setAlpha(230)
             else:
                 col = QColor(M3["on_surface_variant"]); col.setAlpha(78)
             p.setBrush(col)
             p.drawRoundedRect(QRectF(x, mid - bh/2, self.BAR_W, bh), 1.5, 1.5)
         px = self.PAD + play_i * (self.BAR_W + self.GAP)
         if playing:
-            g = QColor(M3["primary"]); g.setAlpha(55)
+            g = self._viz_color(int(play_i), n); g.setAlpha(55)
             p.setBrush(g); p.drawEllipse(QRectF(px - 8 - 3*self._pulse, mid - 8 - 3*self._pulse,
                                                 16 + 6*self._pulse, 16 + 6*self._pulse))
-        p.setBrush(QColor(M3["primary"]))
+        p.setBrush(self._viz_color(int(play_i), n))
         p.drawEllipse(QRectF(px - 3.5, mid - 3.5, 7, 7))
 
     # ===== v17.3: Mode 1/2 — Bars / Mirror Bars (inspired by CAVA sdl_cava) =====
@@ -910,12 +992,12 @@ class Visualizer(QWidget):
                 amp = min(1.0, amp * (1.0 + 0.3 * self._pulse))
             bh = max(2.0, amp * (h - 4))
             if mirror:
-                col = QColor(M3["primary"]); col.setAlpha(220)
+                col = self._viz_color(i, n); col.setAlpha(220)
                 p.setBrush(col)
                 radius = min(bw/2, 2.0) if self.rounded else 0
                 p.drawRoundedRect(QRectF(x, mid - bh/2, bw, bh), radius, radius)
             else:
-                col = QColor(M3["primary"]); col.setAlpha(220)
+                col = self._viz_color(i, n); col.setAlpha(220)
                 p.setBrush(col)
                 radius = min(bw/2, 2.0) if self.rounded else 0
                 p.drawRoundedRect(QRectF(x, h - bh - 1, bw, bh), radius, radius)
@@ -938,7 +1020,7 @@ class Visualizer(QWidget):
             mid_y = (prev_y + y) / 2
             path.quadTo(prev_x, prev_y, mid_x, mid_y)
         path.lineTo(w, mid - self.bars[-1] * (h/2 - 4))
-        pen = QPen(QColor(M3["primary"])); pen.setWidthF(self.bar_w)
+        pen = QPen(self._viz_color(0, n)); pen.setWidthF(self.bar_w)
         pen.setCapStyle(Qt.RoundCap if self.rounded else Qt.SquareCap)
         p.setPen(pen); p.setBrush(Qt.NoBrush)
         p.drawPath(path)
@@ -947,7 +1029,7 @@ class Visualizer(QWidget):
         fill_path.lineTo(0, h)
         fill_path.closeSubpath()
         grad = QLinearGradient(0, 0, 0, h)
-        c = QColor(M3["primary"]); c.setAlpha(80)
+        c = self._viz_color(0, n); c.setAlpha(80)
         grad.setColorAt(0, c); c2 = QColor(M3["primary"]); c2.setAlpha(10)
         grad.setColorAt(1, c2)
         p.setBrush(QBrush(grad)); p.setPen(Qt.NoPen)
@@ -970,7 +1052,7 @@ class Visualizer(QWidget):
             y1 = cy + math.sin(angle) * inner_r
             x2 = cx + math.cos(angle) * (inner_r + bar_len)
             y2 = cy + math.sin(angle) * (inner_r + bar_len)
-            pen = QPen(QColor(M3["primary"])); pen.setWidthF(self.bar_w)
+            pen = QPen(self._viz_color(i, n)); pen.setWidthF(self.bar_w)
             pen.setCapStyle(Qt.RoundCap if self.rounded else Qt.SquareCap)
             p.setPen(pen)
             p.drawLine(QPoint(int(x1), int(y1)), QPoint(int(x2), int(y2)))
@@ -1373,10 +1455,10 @@ QWidget { background-color:transparent; color:@on_surface; font-family:"Roboto",
 QLabel { background:transparent; }
 QToolTip { background-color:@inverse_surface; color:@inverse_on_surface; border:none; padding:4px 8px; border-radius:4px; font-size:12px; }
 /* Navigation drawer -> surface-container-low */
-QFrame#sidebar { background-color:rgba(27,27,33,0.60); border:none; border-right:1px solid rgba(255,255,255,0.04); }
+QFrame#sidebar { background-color:@surface_container_low; border:none; border-right:1px solid @outline_variant; }
 QFrame#contentArea { background-color:transparent; }
 /* Bottom app bar -> glassy surface-container */
-QFrame#playerBar { background-color:rgba(31,31,37,0.72); border:none; border-top:1px solid rgba(255,255,255,0.05); }
+QFrame#playerBar { background-color:@surface_container; border:none; border-top:1px solid @outline_variant; }
 QFrame#albumArt { background-color:@surface_container_highest; border-radius:12px; border:none; min-width:64px; min-height:64px; max-width:64px; max-height:64px; }
 QFrame#queuePanel { background-color:@surface_container_low; border:none; }
 /* Nav drawer item: 28px full-pill, active = secondary-container (M3 spec) */
@@ -1394,7 +1476,7 @@ QLabel#timeLabel { font-size:11px; font-weight:500; color:@on_surface_variant; }
 QLabel#queueHeader { font-size:22px; font-weight:400; color:@on_surface; padding:20px 20px 12px; }
 QLabel#statusLabel { font-size:12px; font-weight:500; color:@on_surface_variant; padding:8px 28px; }
 /* M3 search bar: full pill on surface-container-high */
-QLineEdit#searchBar { background-color:rgba(41,42,47,0.75); border:1px solid rgba(255,255,255,0.06); border-radius:24px; padding:12px 20px 12px 44px; font-size:15px; color:@on_surface; margin:0 28px 16px; }
+QLineEdit#searchBar { background-color:@surface_container_high; border:1px solid @outline_variant; border-radius:24px; padding:12px 20px 12px 44px; font-size:15px; color:@on_surface; margin:0 28px 16px; }
 QLineEdit#searchBar:focus { border:1px solid @primary; }
 /* Outlined dropdown (M3 outlined field) */
 QComboBox#sortCombo { background-color:transparent; border:1px solid @outline; border-radius:4px; padding:8px 12px; font-size:14px; color:@on_surface; min-width:120px; }
@@ -1454,7 +1536,7 @@ QPushButton#tonalBtn:disabled { background-color:@surface_container_high; color:
 QPushButton#dangerBtn { background-color:transparent; color:@error; border:1px solid @outline_variant; border-radius:20px; padding:10px 20px; font-size:14px; font-weight:500; }
 QPushButton#dangerBtn:hover { background-color:rgba(255,180,171,0.10); border-color:@error; }
 /* Settings cards: surface-container-low, 16dp corners (M3 filled card) */
-QFrame#settingsCard { background-color:rgba(27,27,33,0.66); border:1px solid rgba(255,255,255,0.05); border-radius:16px; }
+QFrame#settingsCard { background-color:@surface_container_low; border:1px solid @outline_variant; border-radius:16px; }
 QLabel#cardTitle { font-size:16px; font-weight:500; color:@on_surface; background:transparent; }
 QLabel#cardDesc { font-size:12px; color:@on_surface_variant; background:transparent; }
 /* Hue slider: rainbow groove, white ring handle */
@@ -1479,8 +1561,8 @@ QPushButton#externalBrowseBtn { background-color:@primary_container; color:@on_p
 QPushButton#externalBrowseBtn:hover { background-color:@primary_container_hover; }
 QPushButton#externalBrowseBtn:pressed { background-color:@primary_container_press; }
 /* Browse card: surface-container, 12dp corners, hover lifts to surface-container-high */
-QFrame#browseCard { background-color:rgba(31,31,37,0.65); border:1px solid rgba(255,255,255,0.04); border-radius:14px; }
-QFrame#browseCard:hover { background-color:rgba(41,42,47,0.85); border:1px solid @primary; }
+QFrame#browseCard { background-color:@surface_container; border:1px solid @outline_variant; border-radius:14px; }
+QFrame#browseCard:hover { background-color:@surface_container_high; border:1px solid @primary; }
 /* Browse card text */
 QLabel#browseTitle { font-size:13px; font-weight:500; color:@on_surface; background:transparent; padding:0; }
 QLabel#browseArtist { font-size:12px; color:@on_surface_variant; background:transparent; padding:0; }
@@ -1537,12 +1619,19 @@ def build_ss():
         theme_id = load_cfg().get("theme_id", 0)
     except Exception:
         pass
-    # Append theme-specific structural QSS (shapes, borders, shadows)
-    if theme_id == 1:
+    # Append theme-specific structural QSS (shapes, borders, shadows). The
+    # legacy themed color overrides are intentionally skipped in light mode so
+    # the contrast-safe surface roles remain authoritative.
+    theme_mode = "dark"
+    try:
+        theme_mode = load_cfg().get("theme_mode", "dark")
+    except Exception:
+        pass
+    if effective_theme_mode(theme_mode) != "light" and theme_id == 1:
         base += _m3ss(THEME_NEON_QSS)
-    elif theme_id == 2:
+    elif effective_theme_mode(theme_mode) != "light" and theme_id == 2:
         base += _m3ss(THEME_MATERIAL_QSS)
-    elif theme_id == 3:
+    elif effective_theme_mode(theme_mode) != "light" and theme_id == 3:
         base += _m3ss(THEME_BRUTALIST_QSS)
     return base
 
@@ -3232,6 +3321,7 @@ class Win(QMainWindow):
         self._crossfade_seconds = float(self.cfg.get("crossfade_seconds", 0) or 0)
         self._stream_status = {}
         self._sleep_at_end_of_song = False
+        self._eq_cfg_cache = load_equalizer()
         self._build(); self._shortcuts(); self._tray()
         # v20: Show onboarding on first run (per ADR-003)
         if not self.cfg.get("onboarded_v20"):
@@ -4144,13 +4234,15 @@ class Win(QMainWindow):
 
     def _get_equalizer_status(self):
         """v17.0: expose EQ state in --status JSON."""
-        eq = load_equalizer()
+        eq = getattr(self, "_eq_cfg_cache", None) or load_equalizer()
         return {
             "enabled": eq.get("enabled", False),
             "preset": eq.get("preset", "Flat"),
-            "gains": eq.get("gains", [0]*EQ_BANDS_COUNT),
+            "gains": normalize_gains(eq.get("gains", [0]*EQ_BANDS_COUNT)),
             "bands_hz": EQ_BANDS_HZ,
             "bands_count": EQ_BANDS_COUNT,
+            "dsp_processor": "10-band-peaking",
+            "dsp_backend": "pcm-compatible",
         }
 
     def _get_repeat_stats_status(self):
@@ -4563,6 +4655,7 @@ class Win(QMainWindow):
         eq_cfg = load_equalizer()
         eq_cfg["enabled"] = self.eq_enable_btn.isChecked()
         save_equalizer(eq_cfg)
+        self._eq_cfg_cache = eq_cfg
         self.eq_enable_btn.setText("  EQ: ON" if eq_cfg["enabled"] else "  EQ: OFF")
         print(f"[Aurora][EQ] enabled={eq_cfg['enabled']}", flush=True)
 
@@ -4580,6 +4673,7 @@ class Win(QMainWindow):
         eq_cfg["gains"] = gains
         eq_cfg["preset"] = preset_name
         save_equalizer(eq_cfg)
+        self._eq_cfg_cache = eq_cfg
         if hasattr(self, "eq_widget"):
             self.eq_widget.set_gains(gains)
         # Update the preset combo
@@ -4595,6 +4689,7 @@ class Win(QMainWindow):
         eq_cfg["gains"][band] = gain
         eq_cfg["preset"] = "Custom"  # no longer matches a built-in preset
         save_equalizer(eq_cfg)
+        self._eq_cfg_cache = eq_cfg
         # Update the preset combo to "Custom" (add it if not present)
         if hasattr(self, "eq_preset_combo"):
             if self.eq_preset_combo.findText("Custom") < 0:
@@ -4607,6 +4702,7 @@ class Win(QMainWindow):
         eq_cfg = load_equalizer()
         eq_cfg["gains"] = list(gains)[:EQ_BANDS_COUNT]
         save_equalizer(eq_cfg)
+        self._eq_cfg_cache = eq_cfg
 
     # ===== v15: Playlists — overview grid + detail page (finally functional) ==
     def _pl_view(self):
@@ -4676,6 +4772,11 @@ class Win(QMainWindow):
         self.q_delegate=TrackDelegate(self, rows=lambda: self.queue, current=lambda: self.qidx)
         self.qlist.setItemDelegate(self.q_delegate)
         self.qlist.setMouseTracking(True); self.qlist.setUniformItemSizes(True)
+        self.qlist.setDragEnabled(True); self.qlist.setAcceptDrops(True)
+        self.qlist.setDropIndicatorShown(True)
+        self.qlist.setDragDropMode(QAbstractItemView.InternalMove)
+        self.qlist.setDefaultDropAction(Qt.MoveAction)
+        self.qlist.model().rowsMoved.connect(lambda *args: QTimer.singleShot(0, self._q_sync_dragged))
         self.qlist.itemDoubleClicked.connect(lambda it: self._q_jump(it.data(Qt.UserRole)))
         self.qlist.setContextMenuPolicy(Qt.CustomContextMenu); self.qlist.customContextMenuRequested.connect(self._q_ctx)
         l.addWidget(self.qlist)
@@ -4755,6 +4856,17 @@ class Win(QMainWindow):
             preview_row.addWidget(preview_card)
         preview_row.addStretch()
         ctl.addLayout(preview_row)
+        mode_row = QHBoxLayout(); mode_row.setSpacing(10)
+        mode_lbl = QLabel("Appearance:"); mode_lbl.setObjectName("cardDesc"); mode_row.addWidget(mode_lbl)
+        self.theme_mode_combo = QComboBox(); self.theme_mode_combo.setObjectName("sortCombo")
+        for mode_name in ("Dark", "Light", "System"):
+            self.theme_mode_combo.addItem(mode_name, mode_name.lower())
+        saved_mode = self.cfg.get("theme_mode", "dark")
+        mode_index = max(0, self.theme_mode_combo.findData(saved_mode))
+        self.theme_mode_combo.setCurrentIndex(mode_index)
+        self.theme_mode_combo.currentIndexChanged.connect(self._on_theme_mode_changed)
+        mode_row.addWidget(self.theme_mode_combo); mode_row.addStretch()
+        ctl.addLayout(mode_row)
         # --- Theme color card (existing hue slider — still works for Indigo theme) ---
         c1,c1l,self._theme_icon=card("Theme color (hue slider)","Drag the slider — the Aurora Indigo palette regenerates live from that hue. Only applies to Theme 0 (Aurora Indigo).",IC_PALETTE)
         hs=QHBoxLayout(); hs.setSpacing(14)
@@ -4806,6 +4918,14 @@ class Win(QMainWindow):
         bw_row.addWidget(rounded_chk); self.viz_rounded_chk = rounded_chk
         bw_row.addStretch()
         c2l.addLayout(bw_row)
+        color_row = QHBoxLayout(); color_row.setSpacing(8)
+        color_lbl = QLabel("Color scheme:"); color_lbl.setObjectName("cardDesc"); color_row.addWidget(color_lbl)
+        self.viz_color_combo = QComboBox(); self.viz_color_combo.setObjectName("sortCombo")
+        for scheme in VIZ_COLOR_SCHEMES: self.viz_color_combo.addItem(scheme)
+        color_index = max(0, self.viz_color_combo.findText(viz_cfg.get("color_scheme", "Aurora")))
+        self.viz_color_combo.setCurrentIndex(color_index)
+        self.viz_color_combo.currentIndexChanged.connect(self._on_viz_param_changed)
+        color_row.addWidget(self.viz_color_combo); color_row.addStretch(); c2l.addLayout(color_row)
         # --- Audio device card ---
         c3,c3l,self._dev_icon=card("Audio output","Pick which speaker/headphones Aurora uses. Bluetooth devices reconnect automatically.",IC_AUDIO_DEVICE)
         dv=QPushButton("  Choose Audio Device"); dv.setObjectName("tonalBtn"); dv.setIcon(_svg(IC_AUDIO_DEVICE,M3["on_secondary_container"])); dv.setCursor(Qt.PointingHandCursor)
@@ -5830,10 +5950,11 @@ class Win(QMainWindow):
         The audio buffer callback fires ~30-50 times/sec which was causing
         lag. We skip frames if less than 100ms since last FFT."""
         if not hasattr(self, '_np') or self._np is None: return
-        # v19: Throttle — only compute FFT every 100ms (10 FPS)
+        # v22: keep FFT work bounded at 20Hz; the paint timer interpolates to
+        # 60fps so the visible motion remains fluid.
         import time as _time
         now = _time.monotonic()
-        if now - self._last_fft_time < 0.1:  # 100ms = 10 FPS
+        if now - self._last_fft_time < 0.05:  # 50ms = 20 FPS
             return
         self._last_fft_time = now
         try:
@@ -5903,6 +6024,20 @@ class Win(QMainWindow):
             # Normalize by rolling peak (NOT current max) — quiet stays quiet
             ref = max(self._sens_peak, self._sens_min)
             normalized = [min(1.0, b / ref) for b in bars]
+            # The Qt Multimedia backend exposes decoded buffers as an output
+            # tap, not a portable input filter hook. Apply the validated EQ
+            # curve to the live spectrum here so the analyzer and agent state
+            # respond immediately while keeping playback on the lightweight
+            # native backend. The same curve is available to PCM sinks through
+            # EqualizerDSP in aurora_core.dsp.
+            eq_cfg = getattr(self, "_eq_cfg_cache", None) or load_equalizer()
+            if eq_cfg.get("enabled"):
+                gains = normalize_gains(eq_cfg.get("gains", []))
+                adjusted = []
+                for index, value in enumerate(normalized):
+                    band = int(index * (EQ_BANDS_COUNT - 1) / max(1, len(normalized) - 1))
+                    adjusted.append(min(1.0, value * (10.0 ** (gains[band] / 20.0))))
+                normalized = adjusted
             # v21: CAVA-STYLE MONSTERCAT SMOOTHING — spreads each bar's energy
             # to neighbors so the visualization looks like a continuous waveform
             # instead of isolated bars. Algorithm from CAVA's cavacore:
@@ -6324,6 +6459,26 @@ class Win(QMainWindow):
             if self.qidx==i: self.qidx=j
             elif self.qidx==j: self.qidx=i
             self._refq(); self.qlist.setCurrentRow(j)
+
+    def _q_sync_dragged(self):
+        """Persist QListWidget internal moves while retaining current track."""
+        if not hasattr(self, "qlist") or not self.queue:
+            return
+        old_queue = list(self.queue)
+        current_item = old_queue[self.qidx] if 0 <= self.qidx < len(old_queue) else None
+        order = []
+        for row in range(self.qlist.count()):
+            old_index = self.qlist.item(row).data(Qt.UserRole)
+            if isinstance(old_index, int) and 0 <= old_index < len(old_queue):
+                order.append(old_index)
+        if len(order) != len(old_queue) or len(set(order)) != len(old_queue):
+            self._refq(); return
+        self.queue = [old_queue[index] for index in order]
+        self.qidx = next((index for index, item in enumerate(self.queue) if item is current_item), 0)
+        for row in range(self.qlist.count()):
+            self.qlist.item(row).setData(Qt.UserRole, row)
+        self.qlist.viewport().update()
+        self._write_status()
     def _q_clear(self):
         self.queue=[]; self.qidx=0; self._refq()
     def _q_save_pl(self):
@@ -6345,7 +6500,7 @@ class Win(QMainWindow):
         """v18: Theme selector changed — apply the new theme instantly."""
         theme_id = self.theme_combo.currentIndex()
         self.cfg["theme_id"] = theme_id; save_cfg(self.cfg)
-        apply_theme_mode(self.cfg.get("theme_mode", "dark"), self.cfg.get("theme_hue", DEFAULT_HUE), theme_id)
+        apply_theme_mode(effective_theme_mode(self.cfg.get("theme_mode", "dark")), self.cfg.get("theme_hue", DEFAULT_HUE), theme_id)
         app = QApplication.instance()
         if app: app.setStyleSheet(build_ss())
         # Re-tint all icons + sidebar title with new palette
@@ -6380,11 +6535,15 @@ class Win(QMainWindow):
         if hasattr(self, "theme_combo"):
             self._on_theme_changed()
         else:
-            apply_theme_mode(mode, self.cfg.get("theme_hue", DEFAULT_HUE), self.cfg.get("theme_id", THEME_DEFAULT))
+            apply_theme_mode(effective_theme_mode(mode), self.cfg.get("theme_hue", DEFAULT_HUE), self.cfg.get("theme_id", THEME_DEFAULT))
             app = QApplication.instance()
             if app: app.setStyleSheet(build_ss())
         self._write_status()
         self._show_toast(f"Theme mode: {mode}")
+
+    def _on_theme_mode_changed(self):
+        if hasattr(self, "theme_mode_combo"):
+            self._set_theme_mode(self.theme_mode_combo.currentData() or "dark")
 
     def _set_theme_by_index(self, idx: int):
         """v21: Set theme directly from clickable preview card."""
@@ -6401,7 +6560,7 @@ class Win(QMainWindow):
         self._retheme(h)
     def _retheme(self,hue):
         """v15: regenerate palette + stylesheet + icons from a hue, live."""
-        apply_theme_mode(self.cfg.get("theme_mode", "dark"), hue, self.cfg.get("theme_id", THEME_DEFAULT))
+        apply_theme_mode(effective_theme_mode(self.cfg.get("theme_mode", "dark")), hue, self.cfg.get("theme_id", THEME_DEFAULT))
         app=QApplication.instance()
         if app: app.setStyleSheet(build_ss())
         # re-tint icons that were baked with explicit colors
@@ -6474,11 +6633,15 @@ class Win(QMainWindow):
             cfg["bar_gap"] = self.viz_bar_gap_spin.value()
         if hasattr(self, "viz_rounded_chk"):
             cfg["rounded"] = self.viz_rounded_chk.isChecked()
+        if hasattr(self, "viz_color_combo"):
+            cfg["color_scheme"] = self.viz_color_combo.currentText()
         save_viz_config(cfg)
         if hasattr(self, "viz"):
             self.viz.bar_w = cfg.get("bar_width", 4)
             self.viz.gap = cfg.get("bar_gap", 2)
             self.viz.rounded = cfg.get("rounded", True)
+            self.viz.smoothing = max(1, min(99, int(cfg.get("smoothing", 77))))
+            self.viz.color_scheme = cfg.get("color_scheme", "Aurora")
             self.viz.update()
     def _mute_toggle(self):
         m=not self.audio.isMuted(); self.audio.setMuted(m)
@@ -7188,7 +7351,10 @@ Config: {CONFIG_FILE}"""); return
     cfg = load_cfg()
     theme_id = cfg.get("theme_id", THEME_DEFAULT)
     apply_theme_mode(cfg.get("theme_mode", "dark"), cfg.get("theme_hue", DEFAULT_HUE), theme_id)
-    app=QApplication(sys.argv); app.setApplicationName(APP_NAME); app.setApplicationVersion(APP_VERSION); app.setStyleSheet(build_ss())
+    app=QApplication(sys.argv); app.setApplicationName(APP_NAME); app.setApplicationVersion(APP_VERSION)
+    if cfg.get("theme_mode", "dark") == "system":
+        apply_theme_mode(effective_theme_mode("system"), cfg.get("theme_hue", DEFAULT_HUE), theme_id)
+    app.setStyleSheet(build_ss())
     w=Win()
     if daemon_mode:
         w.hide()
