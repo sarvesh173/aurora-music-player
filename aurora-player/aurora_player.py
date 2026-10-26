@@ -3368,7 +3368,9 @@ class Win(QMainWindow):
             else:
                 command = str(payload.get("command", ""))
                 argv = ["--" + command] + [str(value) for value in payload.get("args", [])]
-            self._dispatch_ipc_args(argv)
+            # This callback runs on the socket worker. Emit only; the connected
+            # Qt signal delivers `_dispatch_ipc_args` on the GUI thread.
+            self.remote_cmd.emit("argv", json.dumps(argv))
             return {"ok": True, "accepted": True, "id": payload.get("id")}
         except Exception as exc:
             return {"ok": False, "error": str(exc), "id": payload.get("id")}
