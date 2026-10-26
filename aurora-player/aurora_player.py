@@ -92,7 +92,7 @@ from aurora_core.ipc import (
 from aurora_core.lyrics import read_embedded_lyrics
 from aurora_core.streams import STREAM_STRATEGIES, resolve_stream
 from aurora_core.telemetry import build_status
-from aurora_core.theme import make_palette as make_core_palette
+from aurora_core.theme import contrast_ratio, make_palette as make_core_palette
 
 try:
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -520,9 +520,13 @@ def apply_theme_mode(mode="dark", hue=DEFAULT_HUE, theme_id=THEME_DEFAULT):
         # taking all surface/foreground roles from the contrast-safe palette.
         if theme_id != THEME_DEFAULT:
             base = THEMES.get(theme_id, DEFAULT_M3)
-            for key in ("primary", "on_primary", "secondary", "on_secondary", "tertiary", "on_tertiary"):
-                if key in base:
-                    pal[key] = base[key]
+            for color_key, foreground_key in (("primary", "on_primary"), ("secondary", "on_secondary"), ("tertiary", "on_tertiary")):
+                if color_key in base:
+                    pal[color_key] = base[color_key]
+                    foreground = base.get(foreground_key, pal[foreground_key])
+                    if contrast_ratio(foreground, pal[color_key]) < 4.5:
+                        foreground = "#000000" if contrast_ratio("#000000", pal[color_key]) >= 4.5 else "#FFFFFF"
+                    pal[foreground_key] = foreground
     elif theme_id == THEME_DEFAULT:
         pal = DEFAULT_M3 if abs(int(hue) - DEFAULT_HUE) <= 1 else make_m3(hue)
     else:
@@ -3324,7 +3328,7 @@ class Win(QMainWindow):
         self._eq_cfg_cache = load_equalizer()
         self._build(); self._shortcuts(); self._tray()
         # v20: Show onboarding on first run (per ADR-003)
-        if not self.cfg.get("onboarded_v20"):
+        if not self.cfg.get("onboarded_v20") and not os.environ.get("AURORA_DAEMON"):
             QTimer.singleShot(800, self._show_onboarding)  # delay so window is ready
         # v12.2: keep play/pause icon + status file in sync with the REAL
         # playback state (the old self.playing flag drifted out of sync,
@@ -6987,7 +6991,7 @@ def _print_helper_command():
   From zip:    bash aurora-player/install.sh
   From .deb:   sudo apt install ./packages/aurora-music_{APP_VERSION}_all.deb
   Dependencies: PySide6, mpris_server, mutagen, yt-dlp, ffmpeg
-  Python deps:  pip install --break-system-packages PySide6 mpris_server mutagen yt-dlp
+  Python deps:  pip install --break-system-packages PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
   System deps:  sudo apt install ffmpeg
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -7081,6 +7085,7 @@ def main():
     args=sys.argv[1:]
     daemon_mode = bool(args and args[0] == "--daemon")
     if daemon_mode:
+        os.environ["AURORA_DAEMON"] = "1"
         if len(args) > 1:
             print("Usage: aurora-player --daemon"); sys.exit(1)
         args = []
@@ -7394,6 +7399,7 @@ Config: {CONFIG_FILE}"""); return
             if PID_FILE.exists() and PID_FILE.read_text().strip()==str(os.getpid()): PID_FILE.unlink()
         except: pass
         (CONFIG_DIR/"cmd.txt").unlink(missing_ok=True)
+        SOCKET_FILE.unlink(missing_ok=True)
         STATUS_FILE.unlink(missing_ok=True)
     app.aboutToQuit.connect(cleanup)
     sys.exit(app.exec())

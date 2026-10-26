@@ -156,7 +156,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```bash
 python3 -m venv ~/.aurora-venv
-~/.aurora-venv/bin/pip install PySide6 mpris_server mutagen
+~/.aurora-venv/bin/pip install PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
 ~/.aurora-venv/bin/python aurora-player/aurora_player.py
 ```
 
@@ -177,7 +177,7 @@ bash linux-packages/build-appimage.sh
 |---------|-----------------|
 | Python | 3.9+ (3.11+ recommended) |
 | PySide6 | `pip install --break-system-packages PySide6` |
-| mpris_server | `pip install --break-system-packages mpris_server` |
+| mpris_server | `pip install --break-system-packages 'mpris_server>=0.4.2,<0.8.0'` |
 | mutagen | `pip install --break-system-packages mutagen` |
 | ffmpeg | `sudo apt install ffmpeg` (required for downloads) |
 | yt-dlp | `pip install --break-system-packages yt-dlp` (required for Browse downloads) |

@@ -92,7 +92,7 @@ cat > "$PKG/DEBIAN/postinst" <<'EOF'
 set -e
 # Optional: MPRIS media-key support (package not in Debian repos)
 if command -v pip3 >/dev/null 2>&1; then
-  pip3 install --quiet --break-system-packages mpris_server >/dev/null 2>&1 || \
+  pip3 install --quiet --break-system-packages 'mpris_server>=0.4.2,<0.8.0' >/dev/null 2>&1 || \
     echo "aurora-music: MPRIS support skipped (pip install mpris_server failed — app still works)"
 fi
 # v17.5: yt-dlp is REQUIRED for Browse full-track downloads (ffmpeg is a
