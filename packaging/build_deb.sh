@@ -66,7 +66,7 @@ Priority: optional
 Architecture: all
 Installed-Size: $INSTALLED_SIZE
 Depends: python3 (>= 3.9), python3-pyside6.qtwidgets, python3-pyside6.qtgui, python3-pyside6.qtcore, python3-pyside6.qtmultimedia, python3-pyside6.qtsvg
-Recommends: python3-mutagen, python3-pip, ffmpeg, yt-dlp
+Recommends: python3-mutagen, python3-numpy, python3-pip, ffmpeg, yt-dlp
 Suggests:
 Maintainer: Aurora Project <aurora@localhost>
 Homepage: https://github.com/devrath/Material-3-Design-Kit

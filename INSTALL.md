@@ -29,7 +29,7 @@ bash install.sh
 ```
 
 What it does:
-- installs Python deps (`PySide6`, `mpris_server>=0.4.2,<0.8.0`, `mutagen`, `yt-dlp`)
+- installs Python deps (`PySide6`, `mpris_server>=0.4.2,<0.8.0`, `mutagen`, `yt-dlp`, `numpy`)
 - copies the player to `~/.local/share/aurora-player/`
 - copies the dependency-light `aurora_core/` package
 - creates the `aurora-player` command in `~/.local/bin/`
@@ -51,7 +51,7 @@ export PATH="$HOME/.local/bin:$PATH"     # add to ~/.bashrc or ~/.zshrc
 ## 2. Manual install
 
 ```bash
-python3 -m pip install --break-system-packages PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
+python3 -m pip install --break-system-packages PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp numpy
 python3 aurora-player/aurora_player.py
 ```
 
@@ -60,7 +60,7 @@ python3 aurora-player/aurora_player.py
 
 ```bash
 python3 -m venv ~/.aurora-venv
-~/.aurora-venv/bin/pip install PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
+~/.aurora-venv/bin/pip install PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp numpy
 ~/.aurora-venv/bin/python aurora-player/aurora_player.py
 ```
 

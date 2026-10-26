@@ -5,4 +5,6 @@ mpris_server>=0.4.2,<0.8.0
 mutagen>=1.47.0
 # v16.5: yt-dlp + ffmpeg required for Browse full-track downloads
 yt-dlp>=2024.0.0
+# Optional at import time, but installed by default to enable live FFT bands.
+numpy>=1.24.0
 # ffmpeg is a system package — install via: sudo apt install ffmpeg

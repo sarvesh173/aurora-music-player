@@ -156,7 +156,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```bash
 python3 -m venv ~/.aurora-venv
-~/.aurora-venv/bin/pip install PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
+~/.aurora-venv/bin/pip install PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp numpy
 ~/.aurora-venv/bin/python aurora-player/aurora_player.py
 ```
 
@@ -181,6 +181,7 @@ bash linux-packages/build-appimage.sh
 | mutagen | `pip install --break-system-packages mutagen` |
 | ffmpeg | `sudo apt install ffmpeg` (required for downloads) |
 | yt-dlp | `pip install --break-system-packages yt-dlp` (required for Browse downloads) |
+| NumPy | `pip install --break-system-packages numpy` (enables live FFT visualizer bands) |
 | playerctl | `sudo apt install playerctl` (optional, for media keys) |
 
 **System Qt libs** (if Qt fails to start):
