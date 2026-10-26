@@ -1,11 +1,11 @@
-# Aurora Music Player v18.0 — Install Guide
+# Aurora Music Player v22.0.0 — Install Guide
 
 ## ⚡ Easiest: install the .deb (Kali / Debian / Ubuntu)
 
 A ready-built package ships in the `packages/` folder:
 
 ```bash
-sudo apt install ./packages/aurora-music_19.1.0_all.deb
+sudo apt install ./packages/aurora-music_22.0.0_all.deb
 aurora-music        # or find "Aurora Music" in your app menu
 ```
 
@@ -17,27 +17,28 @@ and `packaging/build_deb.sh`.
 
 ---
 
-Material 3 edition. Works on Debian 12+, Ubuntu 23.04+, Kali 2024+, Fedora,
+Material 3 Expressive edition. Works on Debian 12+, Ubuntu 23.04+, Kali 2024+, Fedora,
 Arch — any Linux with Python 3.9+ and a desktop session.
 
 ## 1. Quick install (recommended)
 
 ```bash
-unzip aurora-music-v19.1-complete.zip -d ~/aurora-music
+unzip aurora-music-v22.0.0-source.zip -d ~/aurora-music
 cd ~/aurora-music/aurora-player
 bash install.sh
 ```
 
 What it does:
-- installs Python deps (`PySide6`, `mpris_server`, `mutagen`)
+- installs Python deps (`PySide6`, `mpris_server>=0.4.2,<0.8.0`, `mutagen`, `yt-dlp`)
 - copies the player to `~/.local/share/aurora-player/`
+- copies the dependency-light `aurora_core/` package
 - creates the `aurora-player` command in `~/.local/bin/`
 - adds a desktop launcher (app menu entry)
 
 Verify:
 
 ```bash
-aurora-player --version     # → 19.1.0
+aurora-player --version     # → Aurora Music Player v22.0.0
 aurora-player               # launches the Material 3 UI
 ```
 
@@ -50,7 +51,7 @@ export PATH="$HOME/.local/bin:$PATH"     # add to ~/.bashrc or ~/.zshrc
 ## 2. Manual install
 
 ```bash
-python3 -m pip install --break-system-packages PySide6 mpris_server mutagen
+python3 -m pip install --break-system-packages PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
 python3 aurora-player/aurora_player.py
 ```
 
@@ -59,7 +60,7 @@ python3 aurora-player/aurora_player.py
 
 ```bash
 python3 -m venv ~/.aurora-venv
-~/.aurora-venv/bin/pip install PySide6 mpris_server mutagen
+~/.aurora-venv/bin/pip install PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp
 ~/.aurora-venv/bin/python aurora-player/aurora_player.py
 ```
 
@@ -82,16 +83,21 @@ sudo apt install playerctl
 
 ```bash
 aurora-player --status          # JSON playback status
+aurora-player --daemon          # hidden headless engine
 aurora-player --toggle          # play/pause
 aurora-player --play | --pause | --stop | --next | --prev
+aurora-player --set-mode light  # dark/light/system
+aurora-player --eq-preset Acoustic
+aurora-player --sleep-timer 30
 playerctl --player=aurora play  # MPRIS (needs playerctl)
 ```
 
 ## 6. Upgrading from v12.2
 
 Just re-run `bash install.sh` — it overwrites the installed player.
-Settings and playlists in `~/.aurora-player/` are preserved. v19.1 is a
-pure UI upgrade (Material 3); no behavior or IPC changes.
+Settings and playlists in `~/.aurora-player/` are preserved. v22 adds socket
+JSON IPC, enriched status telemetry, expressive themes, queue drag-reordering,
+embedded lyrics, and exponential sleep fade.
 
 ## 7. Uninstall
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aurora Music Player v8.0 — Ultimate Edition
+Aurora Music Player v22.0.0 — Next-Gen Edition
 ============================================
 Custom-built from scratch. No FLB/Alger copy-paste.
 PySide6 + Qt Multimedia + MPRIS + Lucide-style SVG icons.
@@ -30,7 +30,7 @@ Features (20+):
 22. Context menu on songs
 23. Window state save/restore
 24. Responsive layout
-25. Material 3 design system (v12.3) — full M3 dark color scheme (seed
+25. Material 3 design system — full M3 expressive dark/light/system color scheme (seed
     #6366F1), color roles named after Compose MaterialTheme.colorScheme,
     M3 type scale, shape scale (FAB play button, pill nav items, search
     bar), and 8%/12% state layers — translated from the Android Material 3
@@ -4798,7 +4798,7 @@ class Win(QMainWindow):
             dd=QLabel(desc); dd.setObjectName("cardDesc"); dd.setWordWrap(True); cl.addWidget(dd)
             bl.addWidget(c); return c,cl,ic
         # --- v18: Theme selector card (NEW) ---
-        ct,ctl,self._theme_sel_icon = card("Themes (v21 improved)",
+        ct,ctl,self._theme_sel_icon = card("Themes (v22 expressive)",
             "4 themes reverse-engineered from Beatbox, Nora, and Nuclear music players. "
             "Tap a chip below to switch instantly. Aurora Indigo = default with live hue slider. "
             "Aurora Neon = synthwave pink/purple. Aurora Material = clean blue-grey. "
@@ -4822,7 +4822,7 @@ class Win(QMainWindow):
             tm_row.addWidget(chip); self._theme_chips.append(chip)
         tm_row.addStretch()
         ctl.addLayout(tm_row)
-        # v21: Theme preview cards (clickable, show name + 3 swatches per theme)
+        # v22: Theme preview cards (clickable, show name + 3 swatches per theme)
         preview_row = QHBoxLayout(); preview_row.setSpacing(8)
         for i, name in enumerate(THEME_NAMES):
             pal = THEMES.get(i, DEFAULT_M3)
@@ -5038,7 +5038,7 @@ class Win(QMainWindow):
         c5l.addLayout(cookie_row)
         # Auth status display
         self._update_yt_auth_status()
-        # --- About card (v21: improved with credits + features + tech stack) ---
+        # --- About card (v22: core contracts + expressive UI + tech stack) ---
         c4,c4l,_=card("About",
             f"Aurora Music Player v{APP_VERSION}\n"
             f"Built with Kotlin-inspired design • Material 3 Expressive\n\n"
@@ -5052,7 +5052,7 @@ class Win(QMainWindow):
             f"Tech: Python + PySide6 + Qt Multimedia + yt-dlp + ffmpeg\n"
             f"Agent-controllable via playerctl or aurora-player CLI.",
             IC_MUSIC)
-        # v21: Links row in About card
+        # v22: Links row in About card
         links_row = QHBoxLayout(); links_row.setSpacing(8)
         gh_btn = QPushButton("  GitHub")
         gh_btn.setObjectName("tonalBtn")
@@ -5144,12 +5144,12 @@ class Win(QMainWindow):
         print(f"[Aurora][v20] Crossfade set to {seconds}s", flush=True)
 
     def _open_url(self, url: str):
-        """v21: Open a URL in the system default browser."""
+        """v22: Open a URL in the system default browser."""
         from PySide6.QtGui import QDesktopServices
         try:
             QDesktopServices.openUrl(QUrl(url))
         except Exception as e:
-            print(f"[Aurora][v21] open URL failed: {e}", flush=True)
+            print(f"[Aurora][v22] open URL failed: {e}", flush=True)
 
     def _on_music_folder_pick(self):
         """Open a folder picker for the user to choose the music library path."""
@@ -6546,7 +6546,7 @@ class Win(QMainWindow):
             self._set_theme_mode(self.theme_mode_combo.currentData() or "dark")
 
     def _set_theme_by_index(self, idx: int):
-        """v21: Set theme directly from clickable preview card."""
+        """v22: Set theme directly from clickable preview card."""
         if 0 <= idx < len(THEME_NAMES):
             self.theme_combo.setCurrentIndex(idx)  # triggers _on_theme_changed
 

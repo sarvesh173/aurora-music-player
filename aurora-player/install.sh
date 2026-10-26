@@ -18,7 +18,7 @@ echo "[Aurora] Installing v${AURORA_VERSION}..."
 python3 -m pip install -r "$DIR/requirements.txt" --break-system-packages 2>&1 | tail -5 || {
   echo "[Aurora] WARN: pip install reported failures. Continuing anyway —"
   echo "[Aurora]       if PySide6/mpris_server are missing, install manually:"
-  echo "[Aurora]       python3 -m pip install --break-system-packages PySide6 mpris_server mutagen"
+  echo "[Aurora]       python3 -m pip install --break-system-packages PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen"
 }
 mkdir -p "$INST" "$(dirname "$WRAP")" "$(dirname "$DESK")"
 cp "$DIR/aurora_player.py" "$INST/"; chmod +x "$INST/aurora_player.py"

@@ -10,7 +10,7 @@ from aurora_core.dsp import EQ_PRESETS, EqualizerDSP, normalize_gains
 from aurora_core.ipc import command_from_argv, encode_command
 from aurora_core.lyrics import parse_lrc, plain_lyrics, parse_embedded_lyrics
 from aurora_core.queue import DynamicQueue, shuffle_items
-from aurora_core.streams import STREAM_STRATEGIES
+from aurora_core.streams import STREAM_STRATEGIES, build_attempts
 from aurora_core.telemetry import build_status
 from aurora_core.theme import contrast_ratio, make_palette, validate_palette_contrast
 
@@ -110,3 +110,9 @@ def test_ipc_command_contract_is_json_lines_friendly():
 def test_stream_strategy_order_is_stable():
     assert STREAM_STRATEGIES[0] == "cookies-from-browser"
     assert STREAM_STRATEGIES[-1] == "plain-ytdlp"
+    assert [name for name, _ in build_attempts("https://example.com/audio")][-4:] == [
+        "client-rotation",
+        "invidious",
+        "innertube",
+        "plain-ytdlp",
+    ]

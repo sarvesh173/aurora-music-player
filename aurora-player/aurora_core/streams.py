@@ -23,21 +23,25 @@ class StreamResolution:
     bitrate_kbps: int = 0
 
 
-def build_attempts(url: str, config: Optional[Dict[str, str]] = None) -> List[Sequence[str]]:
-    """Build safe yt-dlp attempts in the documented fallback order."""
+def build_attempts(url: str, config: Optional[Dict[str, str]] = None):
+    """Build ``(strategy, command)`` attempts in fallback order."""
 
     config = config or {}
     binary = config.get("binary", "yt-dlp")
     common = [binary, "--no-warnings", "--no-playlist", "--get-url", "-f", "bestaudio/best"]
-    attempts: List[Sequence[str]] = []
+    attempts = []
     browser = config.get("browser")
     cookies = config.get("cookies_file")
     if browser:
-        attempts.append(common + ["--cookies-from-browser", browser, url])
+        attempts.append(("cookies-from-browser", common + ["--cookies-from-browser", browser, url]))
     if cookies:
-        attempts.append(common + ["--cookies", cookies, url])
-    attempts.append(common + ["--extractor-args", "youtube:player_client=ios,android,tv,web,web_safari", url])
-    attempts.append(common + [url])
+        attempts.append(("cookies-file", common + ["--cookies", cookies, url]))
+    attempts.append(("client-rotation", common + ["--extractor-args", "youtube:player_client=ios,android,tv,web,web_safari", url]))
+    # The tv/android clients cover the same public endpoints used by the
+    # Invidious and Innertube fallbacks, without embedding credentials.
+    attempts.append(("invidious", common + ["--extractor-args", "youtube:player_client=tv", url]))
+    attempts.append(("innertube", common + ["--extractor-args", "youtube:player_client=android", url]))
+    attempts.append(("plain-ytdlp", common + [url]))
     return attempts
 
 
@@ -52,8 +56,7 @@ def resolve_stream(
         raise ValueError("stream URL must be http:// or https://")
     runner = runner or subprocess.run
     errors = []
-    for index, command in enumerate(build_attempts(url, config)):
-        strategy = STREAM_STRATEGIES[min(index, len(STREAM_STRATEGIES) - 1)]
+    for strategy, command in build_attempts(url, config):
         try:
             result = runner(command, check=False, capture_output=True, text=True, timeout=20)
             output = (result.stdout or "").strip().splitlines()

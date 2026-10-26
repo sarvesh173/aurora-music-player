@@ -24,6 +24,8 @@ rm -rf "$PKG"; mkdir -p "$PKG/DEBIAN" \
 
 # ---- app payload ----
 install -m 755 "$SRC/aurora_player.py" "$PKG/opt/aurora-music/aurora_player.py"
+mkdir -p "$PKG/opt/aurora-music/aurora_core"
+cp -R "$SRC/aurora_core/." "$PKG/opt/aurora-music/aurora_core/"
 install -m 644 "$SRC/icon-256.png" "$PKG/usr/share/icons/hicolor/256x256/apps/aurora-music.png"
 install -m 644 "$SRC/icon-512.png" "$PKG/usr/share/icons/hicolor/512x512/apps/aurora-music.png"
 install -m 644 "$ROOT/README.md"  "$PKG/usr/share/doc/aurora-music/README.md" 2>/dev/null || true
@@ -70,12 +72,14 @@ Maintainer: Aurora Project <aurora@localhost>
 Homepage: https://github.com/devrath/Material-3-Design-Kit
 Description: Lightweight Material 3 music player
  Aurora Music is a fast, native Qt music player with a full
- Material Design 3 dark theme. Runs smoothly on low-spec
+  Material Design 3 expressive dark/light themes. Runs smoothly on low-spec
  hardware (4 GB RAM / Intel Celeron). Features: library scan,
  full playlist management, queue editing, live hue-slider
  theming, animated beat-graph visualizer, search, MPRIS media
  keys, system tray, agent-friendly CLI (queue/playlist/theme),
- playback via QtMultimedia. v17.5 adds Browse: online iTunes
+  playback via QtMultimedia. v22 adds socket JSON IPC, enriched telemetry,
+  light/dark mode, 60fps visualizer interpolation, and embedded lyrics.
+  v17.5 adds Browse: online iTunes
  search with infinite scroll, auto-suggestions, FULL-TRACK downloads
  (yt-dlp + ffmpeg), and multi-strategy YouTube bot-protection bypass
  (cookies-from-browser, cookies.txt, client-rotation, Invidious,

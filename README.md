@@ -1,11 +1,11 @@
 <p align="center">
-  <h1 align="center">Aurora Music Player v21.0.0</h1>
+  <h1 align="center">Aurora Music Player v22.0.0</h1>
   <p align="center">
     <strong>The Native, Low-Latency Linux Audio Engine for Humans and Autonomous AI Agents.</strong><br>
     Zero Electron. Zero Bloat. Hardware-Accelerated Qt6 & Pure Python.
   </p>
   <p align="center">
-    <a href="https://github.com/sarvesh173/aurora-music-player/releases"><img src="https://img.shields.io/badge/Release-v21.0.0-5E6AD2?style=for-the-badge&logo=github" alt="Release"></a>
+    <a href="https://github.com/sarvesh173/aurora-music-player/releases"><img src="https://img.shields.io/badge/Release-v22.0.0-5E6AD2?style=for-the-badge&logo=github" alt="Release"></a>
     <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
     <a href="https://www.qt.io/"><img src="https://img.shields.io/badge/UI-Qt6%20%2F%20PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="Qt6"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-10B981?style=for-the-badge" alt="License"></a>
@@ -15,14 +15,14 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/02_library_animated_buttons.png" alt="Aurora Music Player v21 Overview" width="900" style="border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+  <img src="screenshots/02_library_animated_buttons.png" alt="Aurora Music Player v22 Overview" width="900" style="border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
 </p>
 
 ---
 
 ## 🎯 What is Aurora?
 
-Aurora Music Player is a **from-scratch, single-file Python application** (`aurora_player.py` — ~386 KB, ~6,500 lines) built with:
+Aurora Music Player keeps a single-file Qt launch point (`aurora_player.py`) with a small dependency-light `aurora_core/` package for agent contracts and pure audio logic. It is built with:
 
 - **PySide6 (Qt 6)** — native widgets, no Electron, no web runtime
 - **Qt Multimedia** — hardware-accelerated playback
@@ -40,7 +40,7 @@ Aurora Music Player is a **from-scratch, single-file Python application** (`auro
 Most Linux audio setups force an impossible tradeoff: either a bloated 800 MB Electron wrapper that chokes budget hardware, or a barebones terminal script with no persistence, no search, and no GUI. Aurora bridges both worlds.
 
 ### 1. Desktop GUI Comparison
-| Feature / Metric | **Aurora v21.0** ⚡ | **Amberol** | **Rhythmbox** | **Spotube** | **Cider / Electron Apps** |
+| Feature / Metric | **Aurora v22.0** ⚡ | **Amberol** | **Rhythmbox** | **Spotube** | **Cider / Electron Apps** |
 |:---|:---:|:---:|:---:|:---:|:---:|
 | **Memory Footprint** | **~120–150 MB** (Celeron-optimized) | ~80 MB | ~220 MB | ~450 MB | ~700 MB–1.2 GB |
 | **Integrated Downloader** | **Yes** (6-strategy YouTube bypass) | ❌ No | ❌ No | Requires API keys | ❌ No |
@@ -49,7 +49,7 @@ Most Linux audio setups force an impossible tradeoff: either a bloated 800 MB El
 | **Low-End Hardware Friendly** | **Yes** (Runs smooth on 2-core Celeron) | Yes | Moderate | Sluggish | Freezes / High CPU |
 | **Headless / Background Mode** | **Yes** (Daemon + CLI interface) | ❌ No | ⚠️ Partial | ❌ No | ❌ No |
 | **SoundCloud Beat Graph** | **Yes** (Monstercat-smoothed) | ❌ Simple Wave | ❌ No | ❌ No | ❌ No |
-| **Code Transparency** | **Single file (~386 KB)** | Compiled Rust/C | Complex C tree | Dart / Flutter bundle | Minified JS bundles |
+| **Code Transparency** | **Readable Qt launch point + small core package** | Compiled Rust/C | Complex C tree | Dart / Flutter bundle | Minified JS bundles |
 
 ### 2. CLI / Terminal & Headless Comparison
 *Some developers ask: "Why not just use `ffplay` or `mpv` in the terminal?"*
@@ -104,10 +104,10 @@ aurora-player --toggle
 | **Browse (Online)** | iTunes Search API (8 storefronts: US/IN/GB/CA/AU/DE/FR/JP), live auto-suggestions (250 ms debounce), infinite scroll (200 result cap), country-specific seed queries |
 | **Downloads** | Full-track MP3 (~190 kbps VBR) via yt-dlp + ffmpeg, iTunes metadata + 600×600 cover art embedded (mutagen APIC), serialized queue, idempotent (skips existing) |
 | **YouTube Bot Bypass** | **6 strategies in sequence:** (1) `cookies-from-browser` (auto-detect Firefox/Chrome/Brave/Edge/Opera/Safari/Vivaldi/Whale) · (2) `cookies.txt` (Netscape format) · (3) Client rotation (`ios,android,tv,web,web_safari`) · (4) Invidious API (3 instances) · (5) SAPISIDHASH Innertube direct `/youtubei/v1/player` with 5-client rotation · (6) Plain yt-dlp (last resort) |
-| **Theme Studio** | Hue slider (0–359) → full Material 3 dark palette regenerates live (all surfaces, buttons, sliders, icons, beat graph). Default seed: `#6366F1` (Aurora indigo) |
-| **Beat Graph** | Monstercat-smoothed SoundCloud-style waveform from **real per-track peak levels** (async `QAudioDecoder`), bars bounce at playhead, travelling shimmer wave, pulsing playhead dot, click/drag to seek |
+| **Theme Studio** | Hue slider plus WCAG-conscious dark/light/system Material 3 palettes, tonal surfaces, and spring feedback. Default seed: `#6366F1` (Aurora indigo) |
+| **Beat Graph** | Monstercat-smoothed waveform with 60fps interpolation over bounded FFT work, real per-track peaks, configurable Aurora/Spectrum/Heat/Monochrome colors, and click/drag seek |
 | **MPRIS / playerctl** | `play`, `pause`, `play-pause`, `stop`, `next`, `previous`, `seek`, `volume`, `shuffle`, `loop` — all marshalled to Qt main thread |
-| **CLI & IPC** | `--status` (rich JSON), `--play-file`, `--toggle`, `--play/--pause/--stop/--next/--prev`, queue/playlist/theme commands, headless Browse search (`--browse-itunes`) |
+| **CLI & IPC** | Unix JSON-lines socket with atomic file fallback, hidden `--daemon`, enriched `--status`, `--play-url`, queue/playlist/theme/EQ/sleep commands, headless Browse search |
 | **System Tray** | Show/hide, play/pause, next, prev, quit — native Qt tray icon |
 | **Keyboard Shortcuts** | Space (play/pause), ←/→ (seek ±5 s), ↑/↓ (volume ±5%), F5 (rescan), Ctrl+F (focus search), Escape (clear search/close dialogs) |
 | **Window State** | Geometry + maximized state persisted to `~/.aurora-player/window_state.json` |
@@ -121,7 +121,7 @@ aurora-player --toggle
 
 ```bash
 # Download the release package, then:
-sudo apt install ./packages/aurora-music_21.0.0_all.deb
+  sudo apt install ./packages/aurora-music_22.0.0_all.deb
 aurora-music          # or find "Aurora Music" in your app menu
 ```
 
@@ -133,14 +133,14 @@ aurora-music          # or find "Aurora Music" in your app menu
 
 ```bash
 # 1. Unzip the release
-unzip aurora-music-21.0.0-source.zip -d ~/aurora-music
+unzip aurora-music-22.0.0-source.zip -d ~/aurora-music
 cd ~/aurora-music/aurora-player
 
 # 2. Install dependencies (uses --break-system-packages on PEP 668 systems)
 bash install.sh
 
 # 3. Run
-aurora-player --version   # → Aurora Music Player v21.0.0
+aurora-player --version   # → Aurora Music Player v22.0.0
 aurora-player             # launches the GUI
 ```
 
@@ -197,7 +197,7 @@ sudo apt install libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
 - **Browse** — online search (iTunes API), infinite scroll, download full tracks
 - **Playlists** — double-click to open detail page, right-click library → "Add to playlist"
 - **Queue** — right-click → remove, drag-reorder (move up/down buttons), Del key
-- **Settings** — hue slider (live theme), beat graph toggle, audio output device
+- **Settings** — hue slider, dark/light/system mode, visualizer palette, EQ, audio output device
 - **Player Bar** — always visible: album art, title/artist, seek bar, volume, play/pause, next/prev, shuffle, repeat, beat graph
 
 ### CLI (for agents / scripts / hotkeys)
@@ -209,6 +209,15 @@ aurora-player --play | --pause | --toggle | --stop | --next | --prev
 
 # Status (rich JSON)
 aurora-player --status | jq .
+
+# Start a hidden headless engine and inspect its socket-backed status
+aurora-player --daemon
+
+# v22 controls
+aurora-player --set-mode light
+aurora-player --eq-preset Acoustic
+aurora-player --sleep-timer 30
+aurora-player --cancel-sleep
 
 # Queue
 aurora-player --queue-file ~/Downloads/song.mp3
@@ -300,7 +309,7 @@ Aurora implements **Google's Material Design 3 (M3) dark theme** translated to Q
 
 - **Source:** Real per-track peak levels via `QAudioDecoder` (async, off UI thread)
 - **Fallback:** Pseudo-waveform from duration + hash (for undecodable codecs)
-- **Animation:** 30 fps while playing only; bars bounce near playhead, shimmer wave travels, playhead dot pulses
+- **Animation:** 60 fps painter interpolation while playing; FFT work is capped at 20 Hz, bars bounce near playhead, and the playhead dot pulses
 - **Interaction:** Click/drag anywhere on graph to seek
 - **Performance:** Pure `QPainter`, no shaders, Celeron-friendly
 
@@ -313,7 +322,8 @@ Aurora is designed to be **driven by AI agents** (Claude Code, Codex, Hermes, et
 - **Single-instance lock** — second launch prints `Already running` and exits cleanly
 - **IPC via CLI** — every action is a CLI flag, returns JSON on `--status`
 - **MPRIS** — standard D-Bus interface, works with any MPRIS client
-- **File IPC** — `~/.aurora-player/ipc_command` (legacy, still works)
+- **Unix socket IPC** — `~/.aurora-player/aurora.sock` with JSON-lines acknowledgements
+- **File IPC fallback** — `~/.aurora-player/cmd.txt` remains available for older agents
 - **Rich `--status` JSON** includes:
   ```json
   {
@@ -321,12 +331,17 @@ Aurora is designed to be **driven by AI agents** (Claude Code, Codex, Hermes, et
     "title": "The Fate of Ophelia",
     "artist": "Taylor Swift",
     "position_ms": 45231,
-    "duration_ms": 187451,
-    "volume": 0.78,
+     "duration_ms": 187451,
+     "bit_rate_kbps": 192,
+     "buffer_health": 1.0,
+     "volume": 78,
     "shuffle": true,
     "repeat": "all",
     "queue": [...],
-    "queue_index": 2,
+     "queue_index": 2,
+     "queue_position": 3,
+     "eq_preset": "Acoustic",
+     "theme_mode": "light",
     "playlists": {"Workout": 12, "Chill": 8},
     "theme_hue": 239,
     "browse": {
@@ -346,9 +361,10 @@ Aurora is designed to be **driven by AI agents** (Claude Code, Codex, Hermes, et
 ## 📁 Project Structure
 
 ```
-aurora-music-21.0.0/
+aurora-music-22.0.0/
 ├── aurora-player/
-│   ├── aurora_player.py        # Main application (~6,500 lines, single file)
+│   ├── aurora_player.py        # Qt launch point and existing feature UI
+│   ├── aurora_core/             # Dependency-light queue, lyrics, DSP, IPC, telemetry
 │   ├── install.sh              # User-space installer (~/.local/)
 │   ├── requirements.txt        # PySide6, mpris_server, mutagen
 │   ├── app-icon.png            # 1024×1024
@@ -368,7 +384,7 @@ aurora-music-21.0.0/
 │   ├── aurora-music.spec       # Fedora/RPM spec
 │   └── com.aurora.Music.json   # Flatpak manifest
 ├── packages/
-│   └── aurora-music_21.0.0_all.deb   # Pre-built .deb
+│   └── aurora-music_22.0.0_all.deb   # Pre-built .deb
 ├── README.md                   # This file
 ├── INSTALL.md                  # Installation guide
 └── screenshots/                # UI screenshots (see below)
@@ -389,7 +405,7 @@ aurora-music-21.0.0/
 ### Debian / Ubuntu / Kali (.deb)
 ```bash
 bash packaging/build_deb.sh
-# Output: packages/aurora-music_21.0.0_all.deb
+# Output: packages/aurora-music_22.0.0_all.deb
 ```
 
 ### AppImage (portable)
@@ -420,9 +436,11 @@ rpmbuild -ba linux-packages/aurora-music.spec
 
 ## 🧠 Architecture Highlights
 
-### Single-File Design
-`aurora_player.py` contains **everything**: UI, playback, MPRIS adapter, library scanner, browse fetcher, downloader, playlist/queue managers, theme engine, beat graph, settings persistence, CLI parser, single-instance lock, IPC.  
-**Why?** Easy to audit, fork, embed, copy-paste into another project. No dependency hell.
+### Lightweight Launch Point + Core Contracts
+`aurora_player.py` remains the easy-to-run Qt launch point. `aurora_core/` keeps
+queue ordering, lyrics parsing, 10-band DSP math, stream strategy selection,
+socket IPC, theme contrast, and telemetry independent from Qt so agents and
+tests do not pay for the GUI at import time.
 
 ### Threading Model
 | Thread | Purpose |
@@ -440,8 +458,11 @@ rpmbuild -ba linux-packages/aurora-music.spec
 ### Data Persistence
 | File | Content |
 |------|---------|
-| `~/.aurora-player/settings.json` | theme_hue, beat_graph_enabled, audio_device, window_state, playlists, queue, browse_auth_config |
+| `~/.aurora-player/settings.json` | theme_hue, theme_mode, visualizer, audio_device, window_state, browse_auth_config |
 | `~/.aurora-player/playlists.json` | Playlist definitions (name → [file paths]) |
+| `~/.aurora-player/aurora.sock` | Primary JSON-lines agent IPC socket (0600) |
+| `~/.aurora-player/cmd.txt` | Atomic legacy IPC fallback |
+| `~/.aurora-player/status.json` | v22 telemetry snapshot |
 | `~/.aurora-player/window_state.json` | Geometry + maximized flag |
 
 ---
@@ -454,10 +475,10 @@ rpmbuild -ba linux-packages/aurora-music.spec
 | Qt fails to start (EGL/GL errors) | `sudo apt install libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1` |
 | No sound / wrong device | Settings → Audio Output Device → pick correct `QAudioDevice` |
 | Downloads fail (bot detection) | Settings → YouTube Auth → choose strategy (browser cookies recommended) |
-| `playerctl` shows "No players found" | `pip install --break-system-packages mpris_server` then restart Aurora |
+| `playerctl` shows "No players found" | Install a Python-3.9-compatible `mpris_server>=0.4.2,<0.8.0` plus system `python3-gi`, then restart Aurora |
 | Library empty | Drop files in `~/Downloads/` or press F5; supported: mp3/m4a/flac/ogg/wav/opus/aac/wma |
-| Theme not applying | Restart Aurora (live retheme works in Settings, but some widgets need restart) |
-| High CPU on idle | Disable beat graph in Settings (30 fps painter while playing only) |
+| Theme not applying | Choose Dark/Light/System in Settings; surface tokens are rebuilt live |
+| High CPU on idle | Disable beat graph in Settings (60fps painter is active only while playing) |
 
 ---
 
@@ -465,6 +486,7 @@ rpmbuild -ba linux-packages/aurora-music.spec
 
 | Version | Highlights |
 |---------|------------|
+| **v22.0.0** | **Next-gen architecture:** dependency-light core contracts, Unix JSON IPC + hidden daemon, enriched telemetry, light/dark/system Material 3 modes, spring controls, 60fps visualizer interpolation, drag-reorder queue, embedded lyrics precedence, Acoustic EQ preset, and exponential sleep fade. |
 | **v21.0.0** | **Massive UI Overhaul & Smoothing:** Monstercat visualizer smoothing, refined vector SVG icon system, eliminated button scaling jitter/layout drift, refreshed About dialog, and deep M3 theme polish. |
 | **v20.0** | **IPC & Daemon Architecture:** Unix socket IPC + DBus integration for background control and instant CLI marshalling. |
 | **v19.2** | **Dynamic Library:** User-configurable music directory (`MUSIC_FOLDER`), faster library indexing and tag parsing. |

@@ -1,4 +1,4 @@
-# AGENT.md — Machine & AI Agent Integration Skill for Aurora v21
+# AGENT.md — Machine & AI Agent Integration Skill for Aurora v22
 
 > **Target Audience:** Autonomous AI Agents (Claude Code, Hermes, AutoGPT, Codex, Cursor, Devina) and Headless Shell Scripts.  
 > **Purpose:** Comprehensive specification for inspecting, controlling, automating, and driving Aurora Music Player without requiring a display or human intervention.
@@ -9,8 +9,9 @@
 
 Aurora Music Player is designed as an **Agent-First Audio Engine**. While it provides a sleek Material 3 desktop GUI for humans, it exposes a first-class **CLI and IPC Unix Socket interface** designed specifically for automation:
 
-- **JSON Telemetry:** Machine-readable playback, queue, volume, and metadata state.
+- **JSON Telemetry:** Machine-readable playback, queue, volume, bitrate, buffer health, EQ, lyrics, and metadata state.
 - **Headless Audio Pipeline:** Can run as a detached background daemon (`--daemon`) on headless servers or low-spec hardware.
+- **Unix JSON IPC:** Socket-first command delivery with an atomic legacy command-file fallback.
 - **Automated YouTube Downloader:** 6-strategy bot-protection bypass allows agents to search and download full tracks without API keys.
 - **Zero-Friction Control:** Control playback with sub-second latency via simple CLI flags or Unix domain socket commands.
 
@@ -47,11 +48,14 @@ aurora-player --status
 **JSON Response Output:**
 ```json
 {
-  "version": "21.0.0",
+  "version": "22.0.0",
+  "api_version": 2,
   "playback_state": "playing",
   "volume": 75,
   "position_ms": 42150,
   "duration_ms": 210000,
+  "bit_rate_kbps": 192,
+  "buffer_health": 1.0,
   "current_track": {
     "title": "Midnight City",
     "artist": "M83",
@@ -60,6 +64,9 @@ aurora-player --status
     "has_cover": true
   },
   "queue_length": 14,
+  "queue_position": 3,
+  "eq_preset": "Acoustic",
+  "theme_mode": "dark",
   "shuffle": false,
   "repeat": "all",
   "daemon_active": true
@@ -92,6 +99,9 @@ aurora-player --next         # Jump to next queue item
 aurora-player --prev         # Jump to previous track
 aurora-player --volume 80    # Set volume (0-100)
 aurora-player --seek 30      # Seek forward/backward in seconds
+aurora-player --eq-preset Acoustic
+aurora-player --sleep-timer 30
+aurora-player --cancel-sleep
 ```
 
 ### E. Headless Online Search (`--browse-itunes`)
@@ -114,6 +124,16 @@ setsid python3 ~/.aurora-music/aurora-player/aurora_player.py --daemon >/dev/nul
 # Verify process is alive
 aurora-player --status
 ```
+
+Commands use `~/.aurora-player/aurora.sock` when the daemon is running. The
+socket accepts one JSON object per connection, for example:
+
+```json
+{"command":"volume","args":["0.8"],"id":"agent-request-1"}
+```
+
+The response acknowledges delivery on the Qt main-thread command bridge. If a
+socket is unavailable, the CLI atomically writes the legacy `cmd.txt` request.
 
 ---
 

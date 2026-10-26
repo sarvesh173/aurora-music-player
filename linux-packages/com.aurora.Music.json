@@ -10,12 +10,14 @@
             "buildsystem": "simple",
             "build-commands": [
                 "install -Dm755 aurora_player.py /app/bin/aurora_player.py",
+                "cp -R aurora_core /app/bin/aurora_core",
                 "install -Dm644 icon-512.png /app/share/icons/hicolor/512x512/apps/com.aurora.Music.png",
                 "install -Dm644 com.aurora.Music.desktop /app/share/applications/com.aurora.Music.desktop",
                 "pip install --no-index --find-links=. PySide6 mutagen numpy yt-dlp"
             ],
             "sources": [
                 {"type": "file", "path": "../aurora-player/aurora_player.py"},
+                {"type": "dir", "path": "../aurora-player/aurora_core"},
                 {"type": "file", "path": "../aurora-player/icon-512.png"}
             ]
         }
