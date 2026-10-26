@@ -23,7 +23,7 @@ When an agent needs to set up Aurora in a fresh Linux environment:
 
 ```bash
 # 1. System Dependencies (Debian / Ubuntu / Kali / Mint)
-sudo apt-get update && sudo apt-get install -y ffmpeg libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+sudo apt-get update && sudo apt-get install -y ffmpeg libegl1 libgl1 libxrandr2 libpulse0 libxkbcommon0 libdbus-1-3 libfontconfig1
 
 # 2. Python Packages
 pip install --break-system-packages PySide6 'mpris_server>=0.4.2,<0.8.0' mutagen yt-dlp numpy

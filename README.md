@@ -186,7 +186,7 @@ bash linux-packages/build-appimage.sh
 
 **System Qt libs** (if Qt fails to start):
 ```bash
-sudo apt install libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+sudo apt install libegl1 libgl1 libxrandr2 libpulse0 libxkbcommon0 libdbus-1-3 libfontconfig1
 ```
 
 ---

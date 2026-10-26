@@ -68,7 +68,7 @@ python3 -m venv ~/.aurora-venv
 
 ```bash
 # Debian/Ubuntu/Kali
-sudo apt install libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+sudo apt install libegl1 libgl1 libxrandr2 libpulse0 libxkbcommon0 libdbus-1-3 libfontconfig1
 # Agent control (optional but recommended)
 sudo apt install playerctl
 ```
