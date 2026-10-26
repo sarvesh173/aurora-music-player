@@ -27,6 +27,7 @@ def build_status(
     playlists: Optional[Mapping[str, int]] = None,
     lyrics: Optional[Mapping[str, Any]] = None,
     stream: Optional[Mapping[str, Any]] = None,
+    daemon_active: bool = False,
 ) -> Dict[str, Any]:
     current = dict(track or {})
     duration_ms = int(current.get("duration_ms") or int(current.get("duration") or 0) * 1000)
@@ -42,6 +43,7 @@ def build_status(
     status: Dict[str, Any] = {
         "version": version,
         "api_version": 2,
+        "daemon_active": bool(daemon_active),
         "state": state,
         "playback_state": state,
         "title": _track_value(track, "title"),

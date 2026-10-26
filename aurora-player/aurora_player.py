@@ -6160,13 +6160,16 @@ class Win(QMainWindow):
                 playlists={n:len(self._pl_paths(n)) for n in self.playlists},
                 lyrics=getattr(self, "_current_lyrics", None),
                 stream=self._stream_status,
+                daemon_active=True,
             )
             status["browse"] = self._browse_get_status() if hasattr(self, "_browse_get_status") else {}
             status["history"] = self._get_history_status() if hasattr(self, "_get_history_status") else {}
             status["session"] = self._get_session_status() if hasattr(self, "_get_session_status") else {}
             status["repeat_stats"] = self._get_repeat_stats_status() if hasattr(self, "_get_repeat_stats_status") else {}
             status["sleep_timer"] = self._sleep_status()
-            STATUS_FILE.write_text(json.dumps(status, indent=2))
+            temp_status = STATUS_FILE.with_suffix(".json.tmp")
+            temp_status.write_text(json.dumps(status, indent=2))
+            os.replace(temp_status, STATUS_FILE)
         except Exception as e: print(f"[Aurora] status write: {e}", flush=True)
     def prev(self):
         # v17.0: record skip-backward (only if we actually skip, not restart)
