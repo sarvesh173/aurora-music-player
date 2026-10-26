@@ -5844,6 +5844,7 @@ class Win(QMainWindow):
         try:
             if cmd == "argv":
                 self._dispatch_ipc_args(json.loads(arg))
+                self._write_status()
                 return
             if cmd=="play": self.play()
             elif cmd=="pause": self.pause()
@@ -5912,6 +5913,7 @@ class Win(QMainWindow):
                         self._browse_download(t); break
                 else:
                     print(f"[Aurora] browse-download: trackId '{tid}' not in current results", flush=True)
+            self._write_status()
             self.mpris.update()
         except Exception as e: print(f"[Aurora] remote_cmd error ({cmd}): {e}", flush=True)
     def _setup_audio_buffer_output(self):
