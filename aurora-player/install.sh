@@ -6,8 +6,8 @@ INST="$HOME/.local/share/aurora-player"
 WRAP="$HOME/.local/bin/aurora-player"
 DESK="$HOME/.local/share/applications/aurora-player.desktop"
 
-# v19.1 version (kept in sync with APP_VERSION in aurora_player.py)
-AURORA_VERSION="19.1.0"
+# v22 version (kept in sync with APP_VERSION in aurora_player.py)
+AURORA_VERSION="22.0.0"
 
 echo "[Aurora] Installing v${AURORA_VERSION}..."
 
@@ -22,6 +22,8 @@ python3 -m pip install -r "$DIR/requirements.txt" --break-system-packages 2>&1 |
 }
 mkdir -p "$INST" "$(dirname "$WRAP")" "$(dirname "$DESK")"
 cp "$DIR/aurora_player.py" "$INST/"; chmod +x "$INST/aurora_player.py"
+rm -rf "$INST/aurora_core"
+cp -R "$DIR/aurora_core" "$INST/aurora_core"
 cat > "$WRAP" <<EOF
 #!/usr/bin/env bash
 exec python3 "$INST/aurora_player.py" "\$@"

@@ -74,6 +74,25 @@ from pathlib import Path
 from enum import Enum
 from datetime import datetime
 
+# v22 core contracts are dependency-light so agent/CLI behavior can be tested
+# without importing Qt. Keep the GUI launch point in this file for startup
+# compatibility and import the heavier Qt stack only below.
+from aurora_core.dsp import (
+    EQ_PRESETS as CORE_EQ_PRESETS,
+    EqualizerDSP,
+    normalize_gains,
+)
+from aurora_core.ipc import (
+    UnixJSONServer,
+    command_from_argv,
+    encode_command,
+    send_json_command,
+    socket_path,
+)
+from aurora_core.lyrics import read_embedded_lyrics
+from aurora_core.streams import STREAM_STRATEGIES, resolve_stream
+from aurora_core.telemetry import build_status
+
 try:
     from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
         QPushButton, QSlider, QLabel, QListWidget, QListWidgetItem, QFrame, QStackedWidget,
@@ -108,7 +127,7 @@ except ImportError:
 
 # ===== Constants =====
 APP_NAME = "Aurora Music Player"
-APP_VERSION = "21.0.0"  # v21: Massive UI update + bug fixes (better icons, monstercat smoothing, About, theme polish)
+APP_VERSION = "22.0.0"  # v22: expressive themes, socket IPC, telemetry, and resilient core contracts
 APP_DBUS = "aurora"
 
 # v19.2: MUSIC_FOLDER is now a *function* that reads the user-configured path
@@ -228,6 +247,7 @@ SESSION_FILE = CONFIG_DIR / "session.json"
 # v17.0: Equalizer + repeat/skip stats persistence
 EQUALIZER_FILE = CONFIG_DIR / "equalizer.json"
 REPEAT_STATS_FILE = CONFIG_DIR / "repeat_stats.json"
+SOCKET_FILE = CONFIG_DIR / "aurora.sock"
 
 # v17.0: 10-band equalizer frequency centers (Hz) — standard ISO 1/3 octave
 EQ_BANDS_HZ = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -244,6 +264,7 @@ EQ_PRESETS = {
     "Bass Boost":  [8, 6, 4, 2, 0, 0, 0, 0, 0, 0],
     "Treble Boost":[0, 0, 0, 0, 0, 0, 2, 4, 6, 8],
     "Vocal":       [-2, -2, 0, 2, 4, 4, 3, 1, 0, -1],
+    "Acoustic":    [2, 2, 1, 2, 3, 2, 3, 3, 2, 1],
     "Rock":        [4, 3, 0, -1, -2, 0, 2, 3, 4, 4],
     "Pop":         [-1, 1, 3, 3, 1, 0, -1, -1, 1, 2],
     "Jazz":        [3, 2, 1, 0, -1, -1, 0, 1, 2, 3],
@@ -264,7 +285,7 @@ VIZ_FILE = CONFIG_DIR / "visualizer.json"
 def load_viz_config():
     """v17.3: Load visualizer config from disk."""
     default = {"mode": VIZ_DEFAULT_MODE, "bar_width": 4, "bar_gap": 2,
-               "smoothing": 77, "rounded": True}
+               "smoothing": 77, "rounded": True, "color_scheme": "Aurora"}
     if VIZ_FILE.exists():
         try:
             d = json.loads(VIZ_FILE.read_text())
@@ -1708,12 +1729,15 @@ QComboBox#sortCombo {
 
 # ===== Utility =====
 def get_metadata(fp):
-    m = {"title":fp.stem,"artist":"Unknown","album":"","duration":0,"art":None,"path":str(fp),"date":fp.stat().st_mtime}
+    m = {"title":fp.stem,"artist":"Unknown","album":"","duration":0,"bit_rate":0,
+         "art":None,"path":str(fp),"date":fp.stat().st_mtime}
     if not HAS_MUTAGEN: return m
     try:
         a = MutagenFile(str(fp))
         if a is None: return m
-        if hasattr(a,'info') and a.info.length: m["duration"]=int(a.info.length)
+        if hasattr(a,'info'):
+            if a.info.length: m["duration"]=int(a.info.length)
+            m["bit_rate"] = int(getattr(a.info, "bitrate", 0) or 0)
         if isinstance(a,MP3):
             t=a.tags or {}
             if "TIT2" in t: m["title"]=str(t["TIT2"])
@@ -1793,6 +1817,11 @@ def fetch_lyrics(track: dict):
     artist = track.get("artist", "")
     duration_sec = int(track.get("duration", 0) or 0)
     duration_ms = duration_sec * 1000
+    # Embedded USLT/plain lyrics are authoritative and work offline. Online
+    # lookup remains the fallback for files without tags.
+    embedded = read_embedded_lyrics(track.get("path", "")) if track.get("path") else None
+    if embedded and embedded.get("lines"):
+        return embedded
     cache_key = _lyrics_track_hash(track)
     cache_file = LYRICS_CACHE_DIR / f"{cache_key}.json"
     # 1. Try cache (30-day TTL)
@@ -1887,7 +1916,7 @@ def fmt_time(s):
 
 def load_cfg():
     d={"vol":70,"repeat":"off","shuffle":False,"sort":"date","last":-1,"w":1100,"h":750,
-       "theme_hue":DEFAULT_HUE,"show_viz":True}  # v15
+       "theme_hue":DEFAULT_HUE,"theme_mode":"dark","show_viz":True}  # v22
     if CONFIG_FILE.exists():
         try: d.update(json.loads(CONFIG_FILE.read_text()))
         except: pass
@@ -2047,9 +2076,10 @@ def load_equalizer():
             if "gains" not in d: d["gains"] = list(default["gains"])
             if "enabled" not in d: d["enabled"] = False
             if "preset" not in d: d["preset"] = "Flat"
-            # Ensure 10 bands
-            while len(d["gains"]) < EQ_BANDS_COUNT: d["gains"].append(0)
-            d["gains"] = d["gains"][:EQ_BANDS_COUNT]
+            # Ensure 10 bands and clamp values at the public DSP boundary.
+            d["gains"] = normalize_gains(d["gains"])
+            if d["preset"] not in EQ_PRESETS and d["preset"] != "Custom":
+                d["preset"] = "Flat"
             return d
         except Exception: pass
     return default
