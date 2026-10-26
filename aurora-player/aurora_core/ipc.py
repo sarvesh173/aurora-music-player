@@ -118,7 +118,17 @@ class UnixJSONServer:
                 break
             with connection:
                 try:
-                    raw = connection.recv(65536).decode("utf-8")
+                    chunks = []
+                    total = 0
+                    while total < 65536:
+                        chunk = connection.recv(min(4096, 65536 - total))
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        total += len(chunk)
+                        if b"\n" in chunk:
+                            break
+                    raw = b"".join(chunks).decode("utf-8")
                     payload = json.loads(raw.strip() or "{}")
                     result = self.callback(payload)
                     response = result if isinstance(result, dict) else {"ok": True}
